@@ -1,7 +1,33 @@
 - name: Configure Tailscale # noqa no-handler
   become: true
   block:
-    - name: Enable Tailscale # noqa no-changed-when
+    - name: Generate one-time auth key for this device
+      no_log: true
+      ansible.builtin.uri:
+        url: "https://api.tailscale.com/api/v2/tailnet/{{ secrets.tailscale.tailnet_id }}/keys"
+        method: POST
+        headers:
+          Authorization: "Bearer {{ tailscale_access_token }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          capabilities:
+            devices:
+              create:
+                reusable: false
+                ephemeral: false
+                preauthorized: true
+                tags:
+                  - "tag:automation"
+          expirySeconds: 3600
+          description: "Ansible-generated key for {{ inventory_hostname }}"
+      register: auth_key_result
+
+    - name: Set generated auth key
+      ansible.builtin.set_fact:
+        generated_auth_key: "{{ auth_key_result.json.key }}"
+
+    - name: Enable Tailscale with automation tag # noqa no-changed-when
       no_log: true
       ansible.builtin.shell: |
         tailscale up \
@@ -10,12 +36,14 @@
         --advertise-exit-node \
         --reset \
         --advertise-routes {{ tailscale_routes }} \
-        --auth-key {{ secrets.tailscale.auth_key }}
+        --auth-key {{ generated_auth_key }}
+
     - name: Create Tailscale Network Policy File
       ansible.builtin.file:
         path: /etc/sysctl.d/99-tailscale.conf
         state: touch
         mode: "0644"
+
     - name: Enable Tailscale IPv4 Routing
       ansible.posix.sysctl:
         name: net.ipv4.ip_forward
@@ -23,6 +51,7 @@
         state: present
         sysctl_file: /etc/sysctl.d/99-tailscale.conf
         reload: true
+
     - name: Enable Tailscale IPv6 Routing
       ansible.posix.sysctl:
         name: net.ipv6.conf.all.forwarding

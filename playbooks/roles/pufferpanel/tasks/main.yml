@@ -1,0 +1,41 @@
+- name: Install Puffer Panel
+  become: true
+  block:
+  - name: "Install prerequisites"
+    ansible.builtin.apt:
+      name:
+        - curl
+        - gnupg
+        - apt-transport-https
+        - ca-certificates
+      state: present
+      update_cache: yes
+
+  - name: "Create APT keyrings directory"
+    ansible.builtin.file:
+      path: /etc/apt/keyrings
+      state: directory
+      mode: '0755'
+
+  - name: "Add PufferPanel GPG key"
+    ansible.builtin.apt_key:
+      url: "https://packagecloud.io/pufferpanel/pufferpanel/gpgkey"
+      keyring: /etc/apt/keyrings/pufferpanel_pufferpanel-archive-keyring.gpg
+      state: present
+
+  - name: "Add PufferPanel repository"
+    ansible.builtin.apt_repository:
+      repo: "deb [signed-by=/etc/apt/keyrings/pufferpanel_pufferpanel-archive-keyring.gpg] https://packagecloud.io/pufferpanel/pufferpanel/{{ ansible_distribution | lower }}/ {{ ansible_distribution_release }} main"
+      filename: pufferpanel_pufferpanel
+      state: present
+
+  - name: "Install PufferPanel"
+    ansible.builtin.apt:
+      name: pufferpanel
+      state: present
+
+  - name: "Enable and start PufferPanel service"
+    ansible.builtin.systemd:
+      name: pufferpanel
+      enabled: yes
+      state: started

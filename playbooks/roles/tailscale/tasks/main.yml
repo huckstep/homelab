@@ -1,3 +1,6 @@
+- name: Validate Tailscale credentials
+  ansible.builtin.include_tasks: validate.yml
+
 - name: Install tailscale
   ansible.builtin.include_tasks: install.yml
 
@@ -6,3 +9,6 @@
 
 - name: Authorize Tailscale
   ansible.builtin.include_tasks: authorize.yml
+
+- name: Cleanup sensitive data
+  ansible.builtin.include_tasks: cleanup.yml

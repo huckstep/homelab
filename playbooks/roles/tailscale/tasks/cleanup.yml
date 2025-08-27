@@ -1,0 +1,18 @@
+- name: Cleanup generated auth key
+  block:
+    - name: Delete the generated auth key
+      no_log: true
+      ansible.builtin.uri:
+        url: "https://api.tailscale.com/api/v2/tailnet/{{ secrets.tailscale.tailnet_id }}/keys/{{ auth_key_result.json.id }}"
+        method: DELETE
+        headers:
+          Authorization: "Bearer {{ tailscale_access_token }}"
+        status_code: [200, 404]
+      when: auth_key_result is defined and auth_key_result.json.id is defined
+      ignore_errors: true
+
+    - name: Clear sensitive variables
+      ansible.builtin.set_fact:
+        tailscale_access_token: ""
+        generated_auth_key: ""
+      no_log: true

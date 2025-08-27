@@ -10,7 +10,7 @@
 
 - name: Basic Setup
   hosts: servers
-  gather_facts: false
+  gather_facts: true
   vars:
     powerpanel_version: 1.4.1
   roles:
@@ -20,6 +20,7 @@
     - tailscale
     - starship
     - powerpanel
+    - pufferpanel
 
 - name: Docker Setup
   hosts: servers

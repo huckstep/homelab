@@ -70,10 +70,14 @@
         group: nogroup
         mode: '0777'
 
-    - name: Configure NFS exports
+    - name: Configure Server NFS export
       ansible.builtin.lineinfile:
         path: /etc/exports
-        line: "/mnt/secondary-storage {{nfs_allowed}}(rw,sync,no_subtree_check,no_root_squash)"
+        line: "/mnt/secondary-storage {{ secrets.server_network }}(rw,sync,no_subtree_check,no_root_squash)"
+    - name: Configure LAN NFS export
+      ansible.builtin.lineinfile:
+        path: /etc/exports
+        line: "/mnt/secondary-storage {{ secrets.lan_network }}(rw,sync,no_subtree_check,no_root_squash)"
 
     - name: Export NFS filesystem
       ansible.builtin.command: exportfs -ra

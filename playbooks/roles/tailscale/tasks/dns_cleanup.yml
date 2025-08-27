@@ -1,0 +1,24 @@
+- name: Remove DNS rewrite from AdGuard Home
+  block:
+    - name: Set hostname for DNS rewrite removal
+      ansible.builtin.set_fact:
+        dns_hostname: "{{ inventory_hostname }}.{{ secrets.adguard.domain_suffix | default('ts.local') }}"
+
+    - name: Remove DNS rewrite from AdGuard Home
+      ansible.builtin.uri:
+        url: "{{ secrets.adguard.api_url }}/rewrite/delete"
+        method: POST
+        headers:
+          Authorization: "Basic {{ (secrets.adguard.username + ':' + secrets.adguard.password) | b64encode }}"
+          Content-Type: "application/json"
+        body_format: json
+        body:
+          domain: "{{ dns_hostname }}"
+        status_code: [200, 400]
+      register: dns_remove_result
+      ignore_errors: true
+
+    - name: Debug DNS rewrite removal
+      ansible.builtin.debug:
+        msg: "Removed DNS rewrite for: {{ dns_hostname }}"
+      when: ansible_verbosity >= 1 and dns_remove_result.status == 200

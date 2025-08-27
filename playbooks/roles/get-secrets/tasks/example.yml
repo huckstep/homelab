@@ -11,3 +11,5 @@
         ssh_key: "lookup from your secrets manager of choice"
         temp_password: "lookup from your secrets manager of choice"
         new_password: "lookup from your secrets manager of choice"
+        server_network: "lookup from your secrets manager of choice"
+        lan_network: "lookup from your secrets manager of choice"

@@ -1,11 +1,27 @@
 - name: Remove Tailscale Device
   block:
+    - name: Get OAuth access token for cleanup
+      no_log: true
+      ansible.builtin.uri:
+        url: "https://api.tailscale.com/api/v2/oauth/token"
+        method: POST
+        headers:
+          Content-Type: "application/x-www-form-urlencoded"
+        body_format: form-urlencoded
+        body:
+          grant_type: "client_credentials"
+          client_id: "{{ secrets.tailscale.client_id }}"
+          client_secret: "{{ secrets.tailscale.client_secret }}"
+          scope: "auth_keys devices:core devices:routes"
+        status_code: [200]
+      register: cleanup_oauth_result
+
     - name: Get Tailnet Devices
       ansible.builtin.uri:
-        url: "https://api.tailscale.com/api/v2/tailnet/{{ secret_tailscale_tailnet_id }}/devices"
+        url: "https://api.tailscale.com/api/v2/tailnet/{{ secrets.tailscale.tailnet_id }}/devices"
         method: GET
         headers:
-          Authorization: "Bearer {{ secrets.tailscale.api_key }}"
+          Authorization: "Bearer {{ cleanup_oauth_result.json.access_token }}"
       register: tailscale_devices
 
     - name: Set Tailscale Device ID
@@ -20,4 +36,8 @@
         url: "https://api.tailscale.com/api/v2/device/{{ tailscale_device_id }}"
         method: DELETE
         headers:
-          Authorization: "Bearer {{ secrets.tailscale.api_key }}"
+          Authorization: "Bearer {{ cleanup_oauth_result.json.access_token }}"
+
+    - name: Remove DNS rewrite during cleanup
+      ansible.builtin.include_tasks: dns_cleanup.yml
+      when: secrets.adguard is defined and secrets.adguard.api_url is defined

@@ -4,11 +4,12 @@
     url: "https://api.tailscale.com/api/v2/tailnet/{{ secrets.tailscale.tailnet_id }}/devices"
     method: GET
     headers:
-      Authorization: "Bearer {{ secrets.tailscale.api_key }}"
+      Authorization: "Bearer {{ tailscale_access_token }}"
   register: tailscale_devices
 
-- ansible.builtin.debug:
-    msg: "{{ item['hostname'] }}"
+- name: Debug device found
+  ansible.builtin.debug:
+    msg: "Found device: {{ item['hostname'] }}"
   when: item['hostname'] == inventory_hostname
   loop: "{{ tailscale_devices.json['devices'] }}"
 
@@ -18,13 +19,18 @@
   when: item['hostname'] == inventory_hostname
   loop: "{{ tailscale_devices.json['devices'] }}"
 
+- name: Fail if device not found
+  ansible.builtin.fail:
+    msg: "Device {{ inventory_hostname }} not found in Tailscale network. Ensure the device is properly registered."
+  when: tailscale_device_id is not defined
+
 - name: Set Tailscale Routes
-  # no_log: true
+  no_log: true
   ansible.builtin.uri:
     url: "https://api.tailscale.com/api/v2/device/{{ tailscale_device_id }}/routes"
     method: POST
     headers:
-      Authorization: "Bearer {{ secrets.tailscale.api_key }}"
+      Authorization: "Bearer {{ tailscale_access_token }}"
       Content-Type: "application/json"
     body_format: "json"
     body:
@@ -36,8 +42,12 @@
     url: "https://api.tailscale.com/api/v2/device/{{ tailscale_device_id }}/key"
     method: POST
     headers:
-      Authorization: "Bearer {{ secrets.tailscale.api_key }}"
+      Authorization: "Bearer {{ tailscale_access_token }}"
       Content-Type: "application/json"
     body_format: "json"
     body:
       keyExpiryDisabled: true
+
+- name: Update DNS rewrite in AdGuard Home
+  ansible.builtin.include_tasks: dns.yml
+  when: secrets.adguard is defined and secrets.adguard.api_url is defined
