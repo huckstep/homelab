@@ -16,7 +16,6 @@
       when: secrets.tailscale.tailnet_id is not defined or secrets.tailscale.tailnet_id == ""
 
     - name: Get OAuth access token
-      no_log: true
       ansible.builtin.uri:
         url: "https://api.tailscale.com/api/v2/oauth/token"
         method: POST
@@ -27,9 +26,14 @@
           grant_type: "client_credentials"
           client_id: "{{ secrets.tailscale.client_id }}"
           client_secret: "{{ secrets.tailscale.client_secret }}"
-          scope: "auth_keys devices:core devices:routes"
+          scope: "auth_keys devices:core devices:routes devices:tags"
         status_code: [200, 400, 401]
       register: oauth_token_result
+
+    - name: Debug OAuth token result
+      ansible.builtin.debug:
+        var: oauth_token_result
+        verbosity: 0
 
     - name: Fail if OAuth authentication failed
       ansible.builtin.fail:
@@ -40,8 +44,12 @@
       ansible.builtin.set_fact:
         tailscale_access_token: "{{ oauth_token_result.json.access_token }}"
 
+    - name: Debug access token
+      ansible.builtin.debug:
+        msg: "Access token starts with: {{ tailscale_access_token[:20] }}..."
+        verbosity: 0
+
     - name: Validate OAuth token by testing API access
-      no_log: true
       ansible.builtin.uri:
         url: "https://api.tailscale.com/api/v2/tailnet/{{ secrets.tailscale.tailnet_id }}/devices"
         method: GET
@@ -49,6 +57,11 @@
           Authorization: "Bearer {{ tailscale_access_token }}"
         status_code: [200, 401, 403]
       register: api_test_result
+
+    - name: Debug API test result
+      ansible.builtin.debug:
+        var: api_test_result
+        verbosity: 0
 
     - name: Fail if OAuth token is invalid
       ansible.builtin.fail:

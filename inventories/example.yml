@@ -8,6 +8,11 @@ servers:
       ansible_user_home: "/home/ansible"
       ansible_python_interpreter: "/venvs/default/bin/python"
       arch: amd64
+      fqdn: node1.example.com
+      tailscale:
+        routes: 192.168.0.0/24
+        tags:
+          - "tag:automation"
 
 powerpanel:
   hosts:

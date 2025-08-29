@@ -1,6 +1,7 @@
 - name: Get Sudo Password
   ansible.builtin.set_fact:
     ansible_become_password: "{{ secrets.temp_password }}"
+    ansible_password: "{{ secrets.temp_password }}"
   no_log: true
 
 - name: Test Sudo Access
@@ -44,6 +45,10 @@
   ansible.builtin.user:
     name: "{{ secrets.interactive_username }}"
     password: "{{ secrets.new_password | password_hash('sha512') }}"
+
+- name: Get Sudo Password
+  ansible.builtin.set_fact:
+    ansible_become_password: "{{ secrets.new_password }}"
 
 - name: Add Interactive User to Sudoers
   become: true
