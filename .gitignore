@@ -1,2 +1,3 @@
 playbooks/roles/get-secrets/tasks/main.yml
 inventories/hosts.yml
+roles/get-secrets/tasks/main.yml

@@ -1,20 +1,22 @@
 ---
-# - name: Security Setup
-#   hosts: servers
-#   gather_facts: false
-#   vars:
-#     ansible_user: "{{ local_user }}"
-#     ansible_python_interpreter: "/usr/bin/python3"
-#   roles:
-#     - security
-#     - pre-reqs
+- name: Security Setup
+  hosts: servers
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "/usr/bin/python3"
+  roles:
+    - security
+    - pre-reqs
 
 - name: Basic Setup
   hosts: servers
   gather_facts: true
   roles:
-    # - secondary-storage
-    # - patch
-    # - starship
-    # - nut
+    - secondary-storage
+    - patch
+    - starship
+    - nut
     - tailscale
+    - github-runner
+    - k3s-install
+

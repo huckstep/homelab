@@ -14,8 +14,12 @@
         state: directory
         mode: '0755'
 
+    - name: Determine partition device name
+      ansible.builtin.set_fact:
+        partition_device: "{{ (secondary_device + 'p1') if secondary_device.startswith('/dev/nvme') else (secondary_device + '1') }}"
+
     - name: Check partition filesystem type
-      ansible.builtin.command: "blkid -o value -s TYPE {{ secondary_device }}1"
+      ansible.builtin.command: "blkid -o value -s TYPE {{ partition_device }}"
       register: fs_check
       failed_when: false
       changed_when: false
@@ -40,19 +44,18 @@
     - name: Create ext4 filesystem
       community.general.filesystem:
         fstype: ext4
-        dev: "{{ secondary_device }}1"
+        dev: "{{ partition_device }}"
         force: true
       when: fs_check.rc != 0 or fs_check.stdout != "ext4"
 
     - name: Mount secondary drive
       ansible.posix.mount:
         path: /mnt/secondary-storage
-        src: "{{ secondary_device }}1"
+        src: "{{ partition_device }}"
         fstype: ext4
         state: mounted
         opts: defaults
-        dump: 0
-        passno: 2
+      when: fs_check.rc != 0 or fs_check.stdout != "ext4"
 
     - name: Install NFS server
       ansible.builtin.apt:

@@ -81,7 +81,20 @@
         state: started
         enabled: true
 
-# OAuth auth key generation
+# Step 3: Validate Tailscale credentials
+- name: Validate Tailscale OAuth credentials
+  ansible.builtin.include_tasks: validate.yml
+
+- name: Debug Tailscale secrets
+  ansible.builtin.debug:
+    msg: |
+      Tailscale Secrets Debug:
+      - tailnet_id: '{{ secrets.tailscale.tailnet_id | default("UNDEFINED") }}'
+      - client_id: '{{ secrets.tailscale.client_id | default("UNDEFINED") }}'
+      - client_secret: '{{ secrets.tailscale.client_secret[:10] | default("UNDEFINED") }}...'
+    verbosity: 2
+
+# Step 4: OAuth auth key generation
 - name: Get OAuth access token
   ansible.builtin.uri:
     url: "https://api.tailscale.com/api/v2/oauth/token"
@@ -100,7 +113,7 @@
     msg: "OAuth token request failed: {{ oauth_result.json.error if oauth_result.json.error is defined else 'Unknown error' }}"
   when: oauth_result.status != 200
 
-# Step 3: Check for existing devices in Tailscale org
+# Step 5: Check for existing devices in Tailscale org
 - name: Check for existing Tailscale devices with same hostname
   ansible.builtin.uri:
     url: "https://api.tailscale.com/api/v2/tailnet/{{ secrets.tailscale.tailnet_id }}/devices"
@@ -216,19 +229,20 @@
   ansible.builtin.debug:
     msg: "Generated auth key: {{ auth_key_result.json.key[:8] }}... (expires in 1 hour)"
 
-# Step 4: Connect Tailscale using generated auth key
+# Step 6: Connect Tailscale using generated auth key
 - name: Set Tailscale connection parameters
   ansible.builtin.set_fact:
-    tailscale_routes: "{{ tailscale.routes | default('') }}"
+    tailscale_routes: "{{ tailscale.routes | default([]) }}"
     tailscale_tags: "{{ tailscale.tags | default([]) }}"
     is_exit_node: "{{ 'tag:exit-node' in (tailscale.tags | default([])) }}"
     is_connector: "{{ 'tag:connector' in (tailscale.tags | default([])) }}"
+    tailscale_routes_string: "{{ (tailscale.routes | default([])) | join(',') if tailscale.routes is iterable and tailscale.routes is not string else (tailscale.routes | default('')) }}"
 
 - name: Display Tailscale configuration
   ansible.builtin.debug:
     msg: |
       Tailscale Configuration:
-      - Routes to advertise: {{ tailscale_routes if tailscale_routes else 'None' }}
+      - Routes to advertise: {{ tailscale_routes_string if tailscale_routes_string else 'None' }}
       - Tags: {{ tailscale_tags | join(', ') if tailscale_tags else 'Default (tag:servers, tag:automation)' }}
       - Exit node: {{ is_exit_node }}
       - Connector: {{ is_connector }}
@@ -246,9 +260,9 @@
 
 - name: Set Tailscale advertised routes
   ansible.builtin.shell: |
-    tailscale set --advertise-routes={{ tailscale_routes }}
+    tailscale set --advertise-routes={{ tailscale_routes_string }}
   become: true
-  when: tailscale_routes != ""
+  when: tailscale_routes_string != ""
   changed_when: true
 
 - name: Set Tailscale exit node advertisement
@@ -269,7 +283,7 @@
     sleep: 5
     delay: 5
     timeout: 300
-  when: tailscale_routes != "" or is_exit_node
+  when: tailscale_routes_string != "" or is_exit_node
 
 - name: Wait for configuration to apply
   ansible.builtin.pause:
@@ -279,7 +293,7 @@
   ansible.builtin.debug:
     msg: |
       Tailscale Configuration Applied:
-      - Routes: {{ tailscale_routes if tailscale_routes else 'None' }}
+      - Routes: {{ tailscale_routes_string if tailscale_routes_string else 'None' }}
       - Exit node: {{ is_exit_node }}
       - Connector: {{ is_connector }}
       - Tags: {{ tailscale_tags | join(', ') if tailscale_tags else 'Default' }}
@@ -323,84 +337,3 @@
       - Already connected and valid, skipped connection step
       {% endif %}
   when: not tailscale_is_connected or tailscale_is_connected or local_registration_invalid | default(false)
-
-# Step 5: Register device in CloudFlare DNS
-- name: Check CloudFlare configuration
-  ansible.builtin.debug:
-    msg: |
-      CloudFlare Configuration Check:
-      - cloudflare.token defined: {{ (secrets.cloudflare.token is defined) if (secrets.cloudflare is defined) else 'cloudflare not defined' }}
-      - cloudflare.email defined: {{ (secrets.cloudflare.email is defined) if (secrets.cloudflare is defined) else 'cloudflare not defined' }}
-      - token starts with: {{ secrets.cloudflare.token[:10] + '...' if (secrets.cloudflare is defined and secrets.cloudflare.token is defined) else 'N/A' }}
-      - tailscale_now_connected: {{ tailscale_now_connected | default('undefined') }}
-      - tailscale_is_connected: {{ tailscale_is_connected }}
-      - Should register DNS: {{ (tailscale_now_connected | default(false) or tailscale_is_connected) and
-        (secrets.cloudflare is defined) and (secrets.cloudflare.token is defined) }}
-
-- name: Register Tailscale device in CloudFlare DNS
-  when:
-    - (tailscale_now_connected | default(false) or tailscale_is_connected)
-    - secrets.cloudflare is defined
-    - secrets.cloudflare.token is defined
-    - secrets.cloudflare.token != ""
-  block:
-    - name: Get CloudFlare zone information
-      ansible.builtin.uri:
-        url: "https://api.cloudflare.com/client/v4/zones?name=huckstep.org"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ secrets.cloudflare.token }}"
-          Content-Type: "application/json"
-      register: cloudflare_zone_result
-
-    - name: Extract zone ID
-      ansible.builtin.set_fact:
-        cloudflare_zone_id: "{{ cloudflare_zone_result.json.result[0].id }}"
-      when: cloudflare_zone_result.json.result | length > 0
-
-    - name: Set FQDN for DNS record
-      ansible.builtin.set_fact:
-        dns_fqdn: "{{ inventory_hostname }}.huckstep.org"
-        tailscale_ip: "{{ updated_tailscale_status.Self.TailscaleIPs[0] if updated_tailscale_status is defined else tailscale_status.Self.TailscaleIPs[0] }}"
-
-    - name: Check for existing DNS record
-      ansible.builtin.uri:
-        url: "https://api.cloudflare.com/client/v4/zones/{{ cloudflare_zone_id }}/dns_records?name={{ dns_fqdn }}&type=A"
-        method: GET
-        headers:
-          Authorization: "Bearer {{ secrets.cloudflare.token }}"
-          Content-Type: "application/json"
-      register: existing_dns_result
-
-    - name: Set DNS record URL
-      ansible.builtin.set_fact:
-        dns_record_url: >-
-          {{ 'https://api.cloudflare.com/client/v4/zones/' + cloudflare_zone_id + '/dns_records/' + existing_dns_result.json.result[0].id
-             if existing_dns_result.json.result | length > 0
-             else 'https://api.cloudflare.com/client/v4/zones/' + cloudflare_zone_id + '/dns_records' }}
-
-    - name: Create or update DNS A record
-      ansible.builtin.uri:
-        url: "{{ dns_record_url }}"
-        method: "{{ 'PUT' if existing_dns_result.json.result | length > 0 else 'POST' }}"
-        headers:
-          Authorization: "Bearer {{ secrets.cloudflare.token }}"
-          Content-Type: "application/json"
-        body_format: json
-        body:
-          type: "A"
-          name: "{{ dns_fqdn }}"
-          content: "{{ tailscale_ip }}"
-          ttl: 300
-          comment: "Tailscale device managed by Ansible"
-      register: dns_record_result
-
-    - name: Display DNS registration results
-      ansible.builtin.debug:
-        msg: |
-          CloudFlare DNS Registration:
-          - FQDN: {{ dns_fqdn }}
-          - Tailscale IP: {{ tailscale_ip }}
-          - Action: {{ 'Updated' if existing_dns_result.json.result | length > 0 else 'Created' }}
-          - Record ID: {{ dns_record_result.json.result.id }}
-          - Success: {{ dns_record_result.json.success }}

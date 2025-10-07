@@ -1,0 +1,17 @@
+---
+# K3s installation defaults
+k3s_force_uninstall: false
+k3s_version: "v1.33.4+k3s1"
+k3s_server_args: "--cluster-init --disable traefik --tls-san {{ ansible_default_ipv4.address }} --write-kubeconfig-mode 644"
+
+# External DNS configuration
+external_dns_domain_filter: ""  # Set to your domain or leave empty to watch all domains
+
+# Cert-manager configuration
+certmanager_cloudflare_zone_id: ""  # Cloudflare Zone ID (required for DNS-01 challenges)
+
+# Storage configuration
+secondary_storage_path: "/mnt/secondary-storage"
+local_path_provisioner_version: "v0.0.24"
+storage_class_fast: "local-path-nvme"
+storage_class_slow: "local-path-ssd"

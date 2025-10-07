@@ -61,9 +61,3 @@
 - name: Setup SSH
   ansible.builtin.include_role:
     name: ssh
-
-- name: Change root Password
-  become: true
-  ansible.builtin.user:
-    name: root
-    password: "{{ secrets.root_password | password_hash('sha512') }}"
