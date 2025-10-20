@@ -282,14 +282,10 @@ Basic system monitoring and logging is configured for all services.
 - Check local-path-provisioner configuration includes required paths
 - Ensure storage classes are properly defined
 - Check PVC events for binding failures
-- Check DNS zone configuration
-- Ensure domain points to correct IP
-
-**Storage Provisioning Issues**
-- Verify NFS exports are accessible
 - Check mount permissions
 - Ensure local-path-provisioner is running
-
+- Check DNS zone configuration
+- Ensure domain points to correct IP
 **Secrets Not Found**
 - Verify secrets manager integration
 - Check secret paths and permissions
