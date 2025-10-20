@@ -61,7 +61,7 @@
     - name: Debug API test result
       ansible.builtin.debug:
         var: api_test_result
-        verbosity: 0
+        verbosity: 2
 
     - name: Fail if OAuth token is invalid
       ansible.builtin.fail:
