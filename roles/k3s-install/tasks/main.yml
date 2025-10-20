@@ -179,7 +179,7 @@
     - name: Update local-path-provisioner config to include custom paths
       ansible.builtin.shell: |
         set -o pipefail
-        JSON_CONFIG='{"nodePathMap":[{"node":"DEFAULT_PATH_FOR_NON_LISTED_NODES","paths":["/var/lib/rancher/k3s/storage","{{ secondary_storage_path }}","/opt/local-path-provisioner"]}]}'
+        JSON_CONFIG="{\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/var/lib/rancher/k3s/storage\",\"{{ secondary_storage_path }}\",\"/opt/local-path-provisioner\"]}]}"
         kubectl get configmap local-path-config -n kube-system -o json | \
         jq --arg config "$JSON_CONFIG" '.data."config.json" = $config' | \
         kubectl apply -f -
