@@ -292,7 +292,7 @@
       register: traefik_pods
 
     - name: Set fact if Traefik pod is ready
-      set_fact:
+      ansible.builtin.set_fact:
         traefik_ready: >-
           {{
             (traefik_pods.resources | default([]) | length > 0)
