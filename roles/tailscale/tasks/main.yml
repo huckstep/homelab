@@ -91,7 +91,7 @@
       Tailscale Secrets Debug:
       - tailnet_id: '{{ secrets.tailscale.tailnet_id | default("UNDEFINED") }}'
       - client_id: '{{ secrets.tailscale.client_id | default("UNDEFINED") }}'
-      - client_secret: '{{ secrets.tailscale.client_secret[:10] | default("UNDEFINED") }}...'
+      - client_secret: '{% if secrets.tailscale.client_secret is defined and secrets.tailscale.client_secret|length > 0 %}SET{% else %}UNDEFINED{% endif %}'
     verbosity: 2
 
 # Step 4: OAuth auth key generation
