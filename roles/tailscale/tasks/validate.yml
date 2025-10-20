@@ -47,7 +47,7 @@
     - name: Debug access token
       ansible.builtin.debug:
         msg: "Access token starts with: {{ tailscale_access_token[:20] }}..."
-        verbosity: 0
+        verbosity: 2
 
     - name: Validate OAuth token by testing API access
       ansible.builtin.uri:
