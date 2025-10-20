@@ -1,6 +1,8 @@
 ---
 - name: Prepare secondary storage
   become: true
+  vars:
+    nfs_export_options: "rw,sync,no_subtree_check,no_root_squash,anonuid=0,anongid=0"
   block:
     - name: Install parted
       ansible.builtin.apt:
@@ -81,12 +83,12 @@
     - name: Configure Server NFS export
       ansible.builtin.lineinfile:
         path: /etc/exports
-        line: "/mnt/secondary-storage {{ secrets.server_network }}(rw,sync,no_subtree_check,no_root_squash,anonuid=0,anongid=0)"
+        line: "/mnt/secondary-storage {{ secrets.server_network }}({{ nfs_export_options }})"
         state: present
     - name: Configure LAN NFS export
       ansible.builtin.lineinfile:
         path: /etc/exports
-        line: "/mnt/secondary-storage {{ secrets.lan_network }}(rw,sync,no_subtree_check,no_root_squash,anonuid=0,anongid=0)"
+        line: "/mnt/secondary-storage {{ secrets.lan_network }}({{ nfs_export_options }})"
         state: present
 
     - name: Export NFS filesystem
