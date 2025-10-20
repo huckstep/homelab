@@ -336,4 +336,4 @@
       {% else %}
       - Already connected and valid, skipped connection step
       {% endif %}
-  when: not tailscale_is_connected or tailscale_is_connected or local_registration_invalid | default(false)
+  when: not tailscale_is_connected or local_registration_invalid | default(false)
