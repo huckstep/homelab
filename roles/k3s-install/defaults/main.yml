@@ -2,21 +2,16 @@
 # K3s installation defaults
 k3s_force_uninstall: false
 k3s_version: "v1.33.4+k3s1"
-k3s_server_args: "--cluster-init --disable traefik --tls-san {{ ansible_default_ipv4.address }} --write-kubeconfig-mode 644"
+k3s_server_args: "--cluster-init --tls-san {{ ansible_default_ipv4.address }} --write-kubeconfig-mode 644"
 
 # External DNS configuration
-external_dns_domain_filter: ""  # Set to your domain or leave empty to watch all domains
+external_dns_domain_filter: "{{ secrets.base_domain }}"  # Set to your domain or leave empty to watch all domains
 
-# Cert-manager configuration
-certmanager_cloudflare_zone_id: ""  # Cloudflare Zone ID (required for DNS-01 challenges)
+# Let's Encrypt configurationEmail for Let's Encrypt notifications
+letsencrypt_email: "{{ secrets.email }}"  # Email for Let's Encrypt notifications
+letsencrypt_staging: true  # Set to true to use staging environment for testing
 
 # Storage configuration
 secondary_storage_path: "/mnt/secondary-storage"
-local_path_provisioner_version: "v0.0.24"
 storage_class_fast: "local-path-nvme"
 storage_class_slow: "local-path-ssd"
-
-# Traefik configuration
-traefik_version: "latest"
-traefik_web_port: "80"
-traefik_websecure_port: "443"

@@ -1,0 +1,48 @@
+# Turn this into a main.yml file and configure to use your secrets manager
+- name: Get Secrets
+  no_log: true
+  block:
+  - name: Get Secrets
+    ansible.builtin.set_fact:
+      secrets:
+        # User account information
+        username: "lookup from your secrets manager of choice"
+        interactive_username: ""
+        email: ""
+
+        # SSH and authentication
+        ssh_key: ""
+        temp_password: ""
+        new_password: ""
+
+        # Network configuration
+        server_network: ""
+        lan_network: ""
+
+        # Base domain for external DNS and certificates
+        base_domain: ""
+
+        # Git/GitHub configuration
+        git:
+          username: ""
+          gh_user: ""
+          runner_org_id: ""
+          runner_client_id: ""
+          runner_install_id: ""
+          runner_registration_pem: ""
+
+        # Cloudflare DNS and certificates
+        cloudflare:
+          email: ""
+          token: ""
+
+        # NUT (Network UPS Tools) for UPS monitoring
+        nut:
+          user: ""
+          pass: ""
+
+        # Tailscale VPN configuration
+        tailscale:
+          client_id: ""
+          client_secret: ""
+          tailnet_id: ""
