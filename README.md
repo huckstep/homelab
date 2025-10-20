@@ -173,14 +173,6 @@ Initial server setup playbook that:
 - Configures Tailscale VPN for secure remote access
 - Sets up GitHub Actions runner for CI/CD
 - Installs K3s (lightweight Kubernetes)
-### deploy-apps.yml
-Application deployment playbook that:
-- Installs K3s Kubernetes
-- Deploys Traefik ingress controller
-- Configures external DNS
-- Sets up storage provisioners
-- Deploys monitoring services
-
 ## Roles
 
 ### Core Roles
