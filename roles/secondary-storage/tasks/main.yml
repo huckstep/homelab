@@ -55,7 +55,6 @@
         fstype: ext4
         state: mounted
         opts: defaults
-      when: fs_check.rc != 0 or fs_check.stdout != "ext4"
 
     - name: Install NFS server
       ansible.builtin.apt:
