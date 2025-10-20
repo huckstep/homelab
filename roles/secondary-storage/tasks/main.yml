@@ -18,7 +18,7 @@
 
     - name: Determine partition device name
       ansible.builtin.set_fact:
-        partition_device: "{{ (secondary_device + 'p1') if secondary_device.startswith('/dev/nvme') else (secondary_device + '1') }}"
+        partition_device: "{{ (secondary_device + 'p1') if (secondary_device.startswith('/dev/nvme') or secondary_device.startswith('/dev/mmcblk')) else (secondary_device + '1') }}"
 
     - name: Check partition filesystem type
       ansible.builtin.command: "blkid -o value -s TYPE {{ partition_device }}"
