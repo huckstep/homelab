@@ -29,11 +29,7 @@
           scope: "auth_keys devices:core devices:routes devices:tags"
         status_code: [200, 400, 401]
       register: oauth_token_result
-
-    - name: Debug OAuth token result
-      ansible.builtin.debug:
-        var: oauth_token_result
-        verbosity: 0
+      no_log: true
 
     - name: Fail if OAuth authentication failed
       ansible.builtin.fail:
