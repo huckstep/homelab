@@ -58,7 +58,7 @@
         state: mounted
         opts: defaults
         dump: 0
-        passno: 0
+        passno: 2
 
     - name: Install NFS server
       ansible.builtin.apt:
