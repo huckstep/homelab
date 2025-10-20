@@ -54,8 +54,8 @@
         headers:
           Authorization: "Bearer {{ tailscale_access_token }}"
         status_code: [200, 401, 403]
-      register: api_test_result
       no_log: true
+      register: api_test_result
 
     - name: Debug API test result
       ansible.builtin.debug:
