@@ -65,22 +65,30 @@
         state: present
         update_cache: true
 
-    - name: Set NFS-compatible permissions
+    - name: Set proper ownership for local-path-provisioner and NFS access
       ansible.builtin.file:
         path: /mnt/secondary-storage
         state: directory
-        owner: nobody
-        group: nogroup
-        mode: '0777'
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Remove existing NFS exports for secondary storage
+      ansible.builtin.lineinfile:
+        path: /etc/exports
+        regexp: '^/mnt/secondary-storage.*'
+        state: absent
 
     - name: Configure Server NFS export
       ansible.builtin.lineinfile:
         path: /etc/exports
-        line: "/mnt/secondary-storage {{ secrets.server_network }}(rw,sync,no_subtree_check,no_root_squash)"
+        line: "/mnt/secondary-storage {{ secrets.server_network }}(rw,sync,no_subtree_check,no_root_squash,anonuid=0,anongid=0)"
+        state: present
     - name: Configure LAN NFS export
       ansible.builtin.lineinfile:
         path: /etc/exports
-        line: "/mnt/secondary-storage {{ secrets.lan_network }}(rw,sync,no_subtree_check,no_root_squash)"
+        line: "/mnt/secondary-storage {{ secrets.lan_network }}(rw,sync,no_subtree_check,no_root_squash,anonuid=0,anongid=0)"
+        state: present
 
     - name: Export NFS filesystem
       ansible.builtin.command: exportfs -ra

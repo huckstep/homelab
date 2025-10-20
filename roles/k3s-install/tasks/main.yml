@@ -49,10 +49,6 @@
         timeout: 30
       when: k3s_status.rc == 0
 
-    - name: Wait for Traefik to be ready
-      ansible.builtin.pause:
-        seconds: 15
-
     - name: Download Helm install script
       ansible.builtin.get_url:
         url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
@@ -143,6 +139,14 @@
 - name: Configure storage provisioners
   become: true
   block:
+    - name: Ensure secondary storage directory exists
+      ansible.builtin.file:
+        path: "{{ secondary_storage_path }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
     - name: Remove original default storage class
       ansible.builtin.command: kubectl delete storageclass local-path
       changed_when: true
@@ -288,5 +292,58 @@
 
     - name: Apply Let's Encrypt production issuer
       ansible.builtin.command: kubectl apply -f /tmp/letsencrypt-prod-issuer.yaml
+      changed_when: true
+
+- name: Install Traefik
+  become: true
+  block:
+    - name: Add Traefik Helm repository
+      ansible.builtin.command: helm repo add traefik https://helm.traefik.io/traefik
+      environment:
+        KUBECONFIG: /home/colin/.kube/config
+      changed_when: true
+      failed_when: false
+
+    - name: Update Helm repositories
+      ansible.builtin.command: helm repo update
+      environment:
+        KUBECONFIG: /home/colin/.kube/config
+      changed_when: true
+
+    - name: Create traefik namespace
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl create namespace traefik --dry-run=client -o yaml | kubectl apply -f -
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Install Traefik via Helm
+      ansible.builtin.command: >
+        helm upgrade --install traefik traefik/traefik
+        --namespace traefik
+        --set service.type=LoadBalancer
+        --set ingressClass.enabled=true
+        --set ingressClass.isDefaultClass=true
+        --set providers.kubernetesIngress.enabled=true
+        --set providers.kubernetesCRD.enabled=true
+        --set providers.kubernetesGateway.enabled=false
+        --set persistence.enabled=false
+        --set dashboard.enabled=true
+        --set api.enabled=true
+        --set api.insecure=true
+        --wait
+      environment:
+        KUBECONFIG: /home/colin/.kube/config
+      changed_when: true
+
+    - name: Create Traefik dashboard IngressRoute
+      ansible.builtin.copy:
+        content: "{{ lookup('template', 'traefik-helm-dashboard.yaml.j2') }}"
+        dest: /tmp/traefik-dashboard.yaml
+        mode: '0644'
+
+    - name: Apply Traefik dashboard configuration
+      ansible.builtin.command: kubectl apply -f /tmp/traefik-dashboard.yaml
       changed_when: true
 

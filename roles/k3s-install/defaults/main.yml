@@ -15,3 +15,8 @@ secondary_storage_path: "/mnt/secondary-storage"
 local_path_provisioner_version: "v0.0.24"
 storage_class_fast: "local-path-nvme"
 storage_class_slow: "local-path-ssd"
+
+# Traefik configuration
+traefik_version: "latest"
+traefik_web_port: "80"
+traefik_websecure_port: "443"

@@ -1,0 +1,15 @@
+---
+apiVersion: traefik.io/v1alpha1
+kind: IngressRoute
+metadata:
+  name: traefik-dashboard
+  namespace: traefik
+spec:
+  entryPoints:
+    - web
+  routes:
+    - match: Host(`traefik.{{ external_dns_domain_filter | default('local') }}`) || Host(`{{ ansible_default_ipv4.address }}`)
+      kind: Rule
+      services:
+        - name: api@internal
+          kind: TraefikService
