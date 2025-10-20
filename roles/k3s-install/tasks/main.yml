@@ -290,7 +290,29 @@
           - app.kubernetes.io/name=traefik
       become: false
       register: traefik_pods
-      until: (traefik_pods.resources | default([]) | length > 0) and ((traefik_pods.resources | default([]))[0].status.conditions | default([]) | selectattr('type', 'equalto', 'Ready') | map(attribute='status') | default([]) | first | default('')) == 'True'
+
+    - name: Set fact if Traefik pod is ready
+      set_fact:
+        traefik_ready: >-
+          {{
+            (traefik_pods.resources | default([]) | length > 0)
+            and (
+              (
+                traefik_pods.resources | default([])
+              )[0].status.conditions
+              | default([])
+              | selectattr('type', 'equalto', 'Ready')
+              | map(attribute='status')
+              | default([])
+              | first
+              | default('')
+            ) == 'True'
+          }}
+
+    - name: Wait for Traefik to be ready (loop)
+      ansible.builtin.debug:
+        msg: "Waiting for Traefik pod to be ready..."
+      until: traefik_ready
       retries: 30
       delay: 10
 
