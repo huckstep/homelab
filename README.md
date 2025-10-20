@@ -164,13 +164,15 @@ Example integrations:
 
 ### new-server.yml
 Initial server setup playbook that:
-- Updates all packages
-- Installs Docker CE
-- Configures Tailscale VPN
-- Sets up PowerPanel for UPS monitoring
-- Installs Starship shell
-- Applies security hardening
-
+- Applies security hardening (SSH, sudo, user setup)
+- Installs required pre-requisite packages
+- Configures secondary storage
+- Installs system patches
+- Installs and configures Starship shell prompt
+- Sets up NUT for UPS monitoring
+- Configures Tailscale VPN for secure remote access
+- Sets up GitHub Actions runner for CI/CD
+- Installs K3s (lightweight Kubernetes)
 ### deploy-apps.yml
 Application deployment playbook that:
 - Installs K3s Kubernetes
