@@ -1,0 +1,68 @@
+- name: Validate Tailscale OAuth credentials
+  block:
+    - name: Check that OAuth client ID is defined
+      ansible.builtin.fail:
+        msg: "Tailscale OAuth client ID is not defined. Please set secrets.tailscale.client_id"
+      when: secrets.tailscale.client_id is not defined or secrets.tailscale.client_id == ""
+
+    - name: Check that OAuth client secret is defined
+      ansible.builtin.fail:
+        msg: "Tailscale OAuth client secret is not defined. Please set secrets.tailscale.client_secret"
+      when: secrets.tailscale.client_secret is not defined or secrets.tailscale.client_secret == ""
+
+    - name: Check that Tailnet ID is defined
+      ansible.builtin.fail:
+        msg: "Tailscale Tailnet ID is not defined. Please set secrets.tailscale.tailnet_id"
+      when: secrets.tailscale.tailnet_id is not defined or secrets.tailscale.tailnet_id == ""
+
+    - name: Get OAuth access token
+      ansible.builtin.uri:
+        url: "https://api.tailscale.com/api/v2/oauth/token"
+        method: POST
+        headers:
+          Content-Type: "application/x-www-form-urlencoded"
+        body_format: form-urlencoded
+        body:
+          grant_type: "client_credentials"
+          client_id: "{{ secrets.tailscale.client_id }}"
+          client_secret: "{{ secrets.tailscale.client_secret }}"
+          # OAuth scopes requested:
+          # - auth_keys: for managing authentication keys
+          # - devices:core: for core device management
+          # - devices:routes: for managing device routes
+          # - devices:tags: required to manage device tags (e.g., for assigning or validating tags on devices)
+          scope: "auth_keys devices:core devices:routes devices:tags"
+        status_code: [200, 400, 401]
+      no_log: true
+      register: oauth_token_result
+
+    - name: Fail if OAuth authentication failed
+      ansible.builtin.fail:
+        msg: "OAuth authentication failed. Status: {{ oauth_token_result.status }}, Response: {{ oauth_token_result.json.error | default('Unknown error') }}"
+      when: oauth_token_result.status != 200
+
+    - name: Set OAuth access token
+      ansible.builtin.set_fact:
+        tailscale_access_token: "{{ oauth_token_result.json.access_token }}"
+
+# (Debug access token task removed for security)
+
+    - name: Validate OAuth token by testing API access
+      ansible.builtin.uri:
+        url: "https://api.tailscale.com/api/v2/tailnet/{{ secrets.tailscale.tailnet_id }}/devices"
+        method: GET
+        headers:
+          Authorization: "Bearer {{ tailscale_access_token }}"
+        status_code: [200, 401, 403]
+      no_log: true
+      register: api_test_result
+
+    - name: Debug API test result
+      ansible.builtin.debug:
+        var: api_test_result
+        verbosity: 2
+
+    - name: Fail if OAuth token is invalid
+      ansible.builtin.fail:
+        msg: "Invalid OAuth token or insufficient permissions. API returned status {{ api_test_result.status }}"
+      when: api_test_result.status != 200

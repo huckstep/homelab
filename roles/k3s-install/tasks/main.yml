@@ -1,0 +1,327 @@
+---
+- name: Uninstall K3s if force_uninstall is true
+  when: k3s_force_uninstall | bool
+  become: true
+  block:
+    - name: Stop K3s service
+      ansible.builtin.service:
+        name: k3s
+        state: stopped
+      failed_when: false
+
+    - name: Uninstall K3s
+      ansible.builtin.command: /usr/local/bin/k3s-uninstall.sh
+      failed_when: false
+      changed_when: true
+
+    - name: Remove K3s data directory
+      ansible.builtin.file:
+        path: /var/lib/rancher/k3s
+        state: absent
+      failed_when: false
+
+- name: Install K3s single server
+  become: true
+  block:
+    - name: Download K3s install script
+      ansible.builtin.get_url:
+        url: https://get.k3s.io
+        dest: /tmp/k3s-install.sh
+        mode: '0755'
+
+    - name: Install K3s
+      ansible.builtin.command: /tmp/k3s-install.sh {{ k3s_server_args }}
+      environment:
+        INSTALL_K3S_VERSION: "{{ k3s_version }}"
+      changed_when: true
+
+    - name: Wait for K3s to be ready
+      ansible.builtin.command: kubectl get nodes
+      register: k3s_status
+      until: k3s_status.rc == 0
+      retries: 30
+      delay: 10
+      changed_when: false
+
+    - name: Wait for kubeconfig to be created
+      ansible.builtin.wait_for:
+        path: /etc/rancher/k3s/k3s.yaml
+        timeout: 30
+      when: k3s_status.rc == 0
+
+    - name: Download Helm install script
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3
+        dest: /tmp/get-helm-3.sh
+        mode: '0755'
+
+    - name: Install Helm
+      ansible.builtin.command: /tmp/get-helm-3.sh
+      args:
+        creates: /usr/local/bin/helm
+      changed_when: false
+
+    - name: Download k9s
+      ansible.builtin.get_url:
+        url: https://github.com/derailed/k9s/releases/latest/download/k9s_Linux_amd64.tar.gz
+        dest: /tmp/k9s.tar.gz
+        mode: '0644'
+
+    - name: Extract k9s
+      ansible.builtin.unarchive:
+        src: /tmp/k9s.tar.gz
+        dest: /tmp
+        remote_src: true
+
+    - name: Install k9s
+      ansible.builtin.command: mv /tmp/k9s /usr/local/bin/k9s
+      args:
+        creates: /usr/local/bin/k9s
+      changed_when: false
+
+    - name: Install kubernetes Python library
+      ansible.builtin.pip:
+        name: kubernetes
+        virtualenv: /venvs/default
+        virtualenv_site_packages: true
+
+    - name: Create .kube directory for ansible_user
+      ansible.builtin.file:
+        path: "{{ ansible_user_dir }}/.kube"
+        state: directory
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0755'
+
+    - name: Copy kubeconfig to ansible_user
+      ansible.builtin.copy:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: "{{ ansible_user_dir }}/.kube/config"
+        owner: "{{ ansible_user }}"
+        group: "{{ ansible_user }}"
+        mode: '0600'
+        remote_src: true
+
+    - name: Fetch kubeconfig for local merging
+      ansible.builtin.fetch:
+        src: /etc/rancher/k3s/k3s.yaml
+        dest: /tmp/{{ inventory_hostname }}-kubeconfig
+        flat: true
+      become: true
+
+    - name: Set permissions on fetched kubeconfig
+      ansible.builtin.file:
+        path: /tmp/{{ inventory_hostname }}-kubeconfig
+        mode: '0644'
+      delegate_to: localhost
+      become: false
+
+    - name: Check if kubeconfig was fetched successfully
+      ansible.builtin.stat:
+        path: /tmp/{{ inventory_hostname }}-kubeconfig
+      register: kubeconfig_stat
+      delegate_to: localhost
+      become: false
+
+    - name: Update server URL in kubeconfig
+      ansible.builtin.replace:
+        path: /tmp/{{ inventory_hostname }}-kubeconfig
+        regexp: 'server: https://.*:6443'
+        replace: 'server: https://{{ ansible_default_ipv4.address }}:6443'
+      delegate_to: localhost
+      become: false
+      when: kubeconfig_stat.stat.exists
+
+    - name: Remove certificate-authority-data and add insecure-skip-tls-verify
+      ansible.builtin.shell: |
+        # Remove only certificate-authority-data line (keep client-certificate-data and client-key-data)
+        grep -v '^\s*certificate-authority-data:' /tmp/{{ inventory_hostname }}-kubeconfig > /tmp/{{ inventory_hostname }}-kubeconfig.tmp
+
+        # Add insecure-skip-tls-verify after the server line
+        awk '/server: https:\/\/.*:6443/ {print; print "    insecure-skip-tls-verify: true"; next} {print}' \
+          /tmp/{{ inventory_hostname }}-kubeconfig.tmp > /tmp/{{ inventory_hostname }}-kubeconfig
+
+        # Clean up temp file
+        rm /tmp/{{ inventory_hostname }}-kubeconfig.tmp
+      delegate_to: localhost
+      become: false
+      changed_when: true
+      when: kubeconfig_stat.stat.exists
+
+    - name: Ensure local .kube directory exists
+      ansible.builtin.file:
+        path: ~/.kube
+        state: directory
+        mode: '0755'
+      delegate_to: localhost
+      become: false
+
+    - name: Merge kubeconfig with local config
+      ansible.builtin.shell: |
+        # Copy the updated kubeconfig to local location
+        cp /tmp/{{ inventory_hostname }}-kubeconfig ~/.kube/config
+      delegate_to: localhost
+      become: false
+      changed_when: true
+      when: kubeconfig_stat.stat.exists
+
+- name: Configure storage provisioners
+  become: true
+  block:
+    - name: Ensure secondary storage directory exists
+      ansible.builtin.file:
+        path: "{{ secondary_storage_path }}"
+        state: directory
+        mode: '0755'
+        owner: root
+        group: root
+
+    - name: Update local-path-provisioner config to include custom paths
+      ansible.builtin.shell: |
+        set -o pipefail
+        JSON_CONFIG="{\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/var/lib/rancher/k3s/storage\",\"{{ secondary_storage_path }}\",\"/opt/local-path-provisioner\"]}]}"
+        kubectl get configmap local-path-config -n kube-system -o json | \
+        jq --arg config "$JSON_CONFIG" '.data."config.json" = $config' | \
+        kubectl apply -f -
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Restart local-path-provisioner to pick up new config
+      ansible.builtin.command: kubectl delete pod -n kube-system -l app=local-path-provisioner
+      changed_when: true
+      failed_when: false
+
+    - name: Remove original default storage class
+      ansible.builtin.command: kubectl delete storageclass local-path
+      changed_when: true
+      failed_when: false
+
+    - name: Create fast storage class
+      ansible.builtin.copy:
+        content: "{{ lookup('template', 'fast-storage-class.yaml.j2') }}"
+        dest: /tmp/fast-storage-class.yaml
+        mode: '0644'
+      changed_when: true
+
+    - name: Apply fast storage class
+      ansible.builtin.command: kubectl apply -f /tmp/fast-storage-class.yaml
+      changed_when: true
+
+    - name: Create slow storage class
+      ansible.builtin.copy:
+        content: "{{ lookup('template', 'slow-storage-class.yaml.j2') }}"
+        dest: /tmp/slow-storage-class.yaml
+        mode: '0644'
+      changed_when: true
+
+    - name: Apply slow storage class
+      ansible.builtin.command: kubectl apply -f /tmp/slow-storage-class.yaml
+      changed_when: true
+
+- name: Install external-dns
+  become: true
+  block:
+    - name: Create external-dns namespace
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl create namespace external-dns --dry-run=client -o yaml | kubectl apply -f -
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Create Cloudflare API token secret
+      ansible.builtin.shell: |
+        set -o pipefail
+        kubectl create secret generic cloudflare-api-token \
+          --from-literal=cloudflare_api_token={{ secrets.cloudflare.token }} \
+          --namespace external-dns \
+          --dry-run=client -o yaml | kubectl apply -f -
+      args:
+        executable: /bin/bash
+      changed_when: true
+
+    - name: Create external-dns manifest
+      ansible.builtin.copy:
+        content: "{{ lookup('template', 'external-dns.yaml.j2') }}"
+        dest: /tmp/external-dns.yaml
+        mode: '0644'
+
+    - name: Apply external-dns manifest
+      ansible.builtin.command: kubectl apply -f /tmp/external-dns.yaml
+      changed_when: true
+
+    - name: Set node external IP for servicelb
+      ansible.builtin.command: >
+        kubectl annotate node {{ ansible_hostname }}
+        svccontroller.k3s.cattle.io/svcnodeport-pool={{ ansible_default_ipv4.address }}
+        --overwrite
+      changed_when: true
+
+    - name: Label node to enable servicelb
+      ansible.builtin.command: >
+        kubectl label node {{ ansible_hostname }}
+        svccontroller.k3s.cattle.io/enablelb=true
+        --overwrite
+      changed_when: true
+
+- name: Configure Traefik with Let's Encrypt
+  become: true
+  block:
+    - name: Create Traefik configuration with ACME
+      ansible.builtin.copy:
+        content: "{{ lookup('template', 'traefik-config.yaml.j2') }}"
+        dest: /tmp/traefik-config.yaml
+        mode: '0644'
+
+    - name: Apply Traefik configuration
+      ansible.builtin.command: kubectl apply -f /tmp/traefik-config.yaml
+      changed_when: true
+
+    - name: Restart Traefik to pick up new configuration
+      ansible.builtin.command: kubectl delete pod -n kube-system -l app.kubernetes.io/name=traefik
+      changed_when: true
+
+    - name: Wait for Traefik to be ready
+      kubernetes.core.k8s_info:
+        kind: Pod
+        namespace: kube-system
+        label_selectors:
+          - app.kubernetes.io/name=traefik
+      become: false
+      register: traefik_pods
+
+    - name: Set fact if Traefik pod is ready
+      ansible.builtin.set_fact:
+        traefik_ready: >-
+          {{
+            (traefik_pods.resources | default([]) | length > 0)
+            and (
+              (
+                traefik_pods.resources | default([])
+              )[0].status.conditions
+              | default([])
+              | selectattr('type', 'equalto', 'Ready')
+              | map(attribute='status')
+              | default([])
+              | first
+              | default('')
+            ) == 'True'
+          }}
+
+    - name: Wait for Traefik to be ready (loop)
+      ansible.builtin.debug:
+        msg: "Waiting for Traefik pod to be ready..."
+      until: traefik_ready
+      retries: 30
+      delay: 10
+
+    - name: Create Traefik dashboard IngressRoute
+      ansible.builtin.copy:
+        content: "{{ lookup('template', 'traefik-dashboard.yaml.j2') }}"
+        dest: /tmp/traefik-dashboard.yaml
+        mode: '0644'
+
+    - name: Apply Traefik dashboard configuration
+      ansible.builtin.command: kubectl apply -f /tmp/traefik-dashboard.yaml
+      changed_when: true

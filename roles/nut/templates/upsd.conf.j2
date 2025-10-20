@@ -1,0 +1,20 @@
+# Network UPS Tools - upsd configuration file
+# This file contains the configuration for the upsd daemon
+
+# LISTEN directive specifies the interface and port for upsd to listen on
+# Format: LISTEN <address> [<port>]
+# Default port is 3493
+{% if nut_listen_addresses is defined %}
+{% for address in nut_listen_addresses %}
+LISTEN {{ address }} {{ nut_port | default('3493') }}
+{% endfor %}
+{% else %}
+# Listen on all interfaces by default
+LISTEN 0.0.0.0 {{ nut_port | default('3493') }}
+{% endif %}
+
+# MAXCONN is the maximum number of simultaneous connections allowed
+MAXCONN {{ nut_maxconn | default('1024') }}
+
+# MAXAGE is the maximum age in seconds of data that is kept
+MAXAGE {{ nut_maxage | default('15') }}

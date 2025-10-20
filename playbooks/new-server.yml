@@ -3,28 +3,20 @@
   hosts: servers
   gather_facts: false
   vars:
-    ansible_user: "{{ local_user }}"
     ansible_python_interpreter: "/usr/bin/python3"
   roles:
     - security
+    - pre-reqs
 
 - name: Basic Setup
   hosts: servers
   gather_facts: true
   vars:
-    powerpanel_version: 1.4.1
   roles:
-    - pre-reqs
     - secondary-storage
     - patch
-    - tailscale
     - starship
-    - powerpanel
-    - pufferpanel
-
-- name: Docker Setup
-  hosts: servers
-  gather_facts: true
-  become: true
-  roles:
-    - docker
+    - nut
+    - tailscale
+    - github-runner
+    - k3s-install

@@ -1,0 +1,99 @@
+- name: Install NUT
+  become: true
+  ansible.builtin.apt:
+    name:
+      - nut
+    state: present
+
+- name: Enable NUT Server Service
+  become: true
+  ansible.builtin.systemd:
+    name: nut-server
+    enabled: true
+
+- name: Configure NUT Main Configuration
+  become: true
+  ansible.builtin.template:
+    src: nut.conf.j2
+    dest: /etc/nut/nut.conf
+    mode: '0644'
+    owner: root
+    group: nut
+  notify: restart nut
+
+- name: Configure NUT Daemon
+  become: true
+  ansible.builtin.template:
+    src: upsd.conf.j2
+    dest: /etc/nut/upsd.conf
+    mode: '0644'
+    owner: root
+    group: nut
+  notify: restart nut
+
+- name: Configure NUT
+  become: true
+  ansible.builtin.template:
+    src: ups.conf.j2
+    dest: /etc/nut/ups.conf
+    mode: '0644'
+    owner: root
+    group: nut
+  notify: restart nut
+
+- name: Configure NUT UPSD Users
+  become: true
+  ansible.builtin.template:
+    src: upsd.users.j2
+    dest: /etc/nut/upsd.users
+    mode: '0644'
+    owner: root
+    group: nut
+  notify: restart nut
+
+- name: Add nut user to dialout group
+  become: true
+  ansible.builtin.user:
+    name: nut
+    groups: dialout
+    append: true
+
+- name: Create udev rules for NUT USB access
+  become: true
+  ansible.builtin.copy:
+    content: |
+      # NUT USB device access rules
+      SUBSYSTEM=="usb", ATTR{idVendor}=="0764", ATTR{idProduct}=="0601", MODE="0664", GROUP="nut"
+      SUBSYSTEM=="usb", ATTRS{idVendor}=="0764", ATTRS{idProduct}=="0601", MODE="0664", GROUP="nut"
+      # General USB UPS devices
+      SUBSYSTEM=="usb", ATTR{bInterfaceClass}=="03", ATTR{bInterfaceSubClass}=="00", ATTR{bInterfaceProtocol}=="00", MODE="0664", GROUP="nut"
+    dest: /etc/udev/rules.d/62-nut-usbups.rules
+    mode: '0644'
+    owner: root
+    group: root
+  notify: Reload udev
+
+- name: Trigger udev rules reload
+  become: true
+  ansible.builtin.shell:
+    cmd: udevadm control --reload-rules && udevadm trigger
+  changed_when: true
+
+- name: Check USB UPS devices
+  become: true
+  ansible.builtin.command:
+    cmd: lsusb
+  register: lsusb_output
+  changed_when: false
+
+- name: Display USB devices
+  ansible.builtin.debug:
+    var: lsusb_output.stdout_lines
+
+- name: Start UPS Driver
+  become: true
+  ansible.builtin.command:
+    cmd: upsdrvctl start
+  register: upsdrvctl_result
+  failed_when: upsdrvctl_result.rc not in [0, 1]
+  changed_when: upsdrvctl_result.rc == 0

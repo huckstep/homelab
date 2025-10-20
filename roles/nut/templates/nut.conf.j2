@@ -1,0 +1,17 @@
+# Network UPS Tools Configuration File
+# This file contains the global settings for the Network UPS Tools (NUT)
+
+# The MODE setting determines how NUT will operate
+# Possible values are:
+# - none: NUT is not configured to do anything
+# - standalone: This system will run upsd and upsmon in standalone mode
+# - netserver: This system is a UPS server (runs upsd)
+# - netclient: This system is a UPS client (runs upsmon)
+MODE={{ nut_mode | default('netserver') }}
+
+# MAXAGE is the maximum age in seconds of data that is kept
+# This is used to prevent stale data from being served
+MAXAGE={{ nut_maxage | default('15') }}
+
+# STATEPATH is the directory where state files are stored
+STATEPATH={{ nut_statepath | default('/var/lib/nut') }}

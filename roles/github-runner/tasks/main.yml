@@ -1,0 +1,204 @@
+---
+- name: Install GitHub Actions Runner
+  become: true
+  block:
+    - name: Remove any existing Microsoft repository configuration
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - /etc/apt/sources.list.d/microsoft.list
+        - /etc/apt/keyrings/microsoft.asc
+        - /usr/share/keyrings/microsoft.asc
+        - /usr/share/keyrings/microsoft.gpg
+
+    - name: Create keyrings directory
+      ansible.builtin.file:
+        path: /usr/share/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Add Microsoft package signing key
+      ansible.builtin.get_url:
+        url: https://packages.microsoft.com/keys/microsoft.asc
+        dest: /tmp/microsoft.asc
+        mode: '0644'
+
+    - name: Dearmor Microsoft GPG key
+      ansible.builtin.command:
+        cmd: gpg --dearmor --output /usr/share/keyrings/microsoft.gpg /tmp/microsoft.asc
+        creates: /usr/share/keyrings/microsoft.gpg
+
+    - name: Clean up temporary key file
+      ansible.builtin.file:
+        path: /tmp/microsoft.asc
+        state: absent
+
+    - name: Add Microsoft repository
+      ansible.builtin.copy:
+        content: |
+          deb [arch=amd64 signed-by=/usr/share/keyrings/microsoft.gpg] https://packages.microsoft.com/debian/12/prod bookworm main
+        dest: /etc/apt/sources.list.d/microsoft.list
+        mode: '0644'
+
+    - name: Install required packages
+      ansible.builtin.apt:
+        name:
+          - curl
+          - jq
+          - git
+          - sudo
+          - wget
+          - apt-transport-https
+          - gpg
+        state: present
+        update_cache: true
+
+    - name: Update apt cache after adding Microsoft repository
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install .NET 8 runtime for GitHub Actions runner
+      ansible.builtin.apt:
+        name:
+          - dotnet-runtime-8.0
+        state: present
+        update_cache: true
+
+    - name: Create runner group
+      ansible.builtin.group:
+        name: "{{ github_runner_group }}"
+        state: present
+
+    - name: Create runner user
+      ansible.builtin.user:
+        name: "{{ github_runner_user }}"
+        group: "{{ github_runner_group }}"
+        home: "{{ github_runner_home }}"
+        shell: /bin/bash
+        create_home: true
+        system: false
+
+    - name: Add runner user to sudo group
+      ansible.builtin.user:
+        name: "{{ github_runner_user }}"
+        groups: sudo
+        append: true
+
+    - name: Allow runner user to use sudo without password
+      ansible.builtin.lineinfile:
+        path: /etc/sudoers.d/runner
+        line: "{{ github_runner_user }} ALL=(ALL) NOPASSWD:ALL"
+        create: true
+        mode: '0440'
+        validate: 'visudo -cf %s'
+
+    - name: Create runner work directory
+      ansible.builtin.file:
+        path: "{{ github_runner_work_dir }}"
+        state: directory
+        owner: "{{ github_runner_user }}"
+        group: "{{ github_runner_group }}"
+        mode: '0755'
+
+    - name: Check if runner is already installed
+      ansible.builtin.stat:
+        path: "{{ github_runner_work_dir }}/config.sh"
+      register: runner_installed
+
+    - name: Get latest GitHub Actions Runner version
+      ansible.builtin.uri:
+        url: https://api.github.com/repos/actions/runner/releases/latest
+        return_content: true
+      register: latest_release
+      when: not runner_installed.stat.exists
+
+    - name: Set runner version
+      ansible.builtin.set_fact:
+        github_runner_version: "{{ latest_release.json.tag_name | regex_replace('^v', '') }}"
+      when: not runner_installed.stat.exists
+
+    - name: Download GitHub Actions Runner
+      ansible.builtin.get_url:
+        url: "https://github.com/actions/runner/releases/download/v{{ github_runner_version }}/actions-runner-linux-x64-{{ github_runner_version }}.tar.gz"
+        dest: "/tmp/actions-runner-linux-x64-{{ github_runner_version }}.tar.gz"
+        mode: '0644'
+      when: not runner_installed.stat.exists
+
+    - name: Extract GitHub Actions Runner
+      ansible.builtin.unarchive:
+        src: "/tmp/actions-runner-linux-x64-{{ github_runner_version }}.tar.gz"
+        dest: "{{ github_runner_work_dir }}"
+        remote_src: true
+        owner: "{{ github_runner_user }}"
+        group: "{{ github_runner_group }}"
+      when: not runner_installed.stat.exists
+
+    - name: Create registration token script
+      ansible.builtin.template:
+        src: generate_token.py.j2
+        dest: "{{ github_runner_work_dir }}/generate_token.py"
+        owner: "{{ github_runner_user }}"
+        group: "{{ github_runner_group }}"
+        mode: '0755'
+
+    - name: Install Python JWT library
+      ansible.builtin.apt:
+        name:
+          - python3-jwt
+          - python3-requests
+        state: present
+
+    - name: Generate registration token
+      ansible.builtin.command:
+        cmd: python3 {{ github_runner_work_dir }}/generate_token.py
+      become: true
+      become_user: "{{ github_runner_user }}"
+      register: registration_token
+      changed_when: false
+
+    - name: Check if runner is already configured
+      ansible.builtin.stat:
+        path: "{{ github_runner_work_dir }}/.runner"
+      register: runner_configured
+
+    - name: Configure GitHub Actions Runner
+      ansible.builtin.command:
+        cmd: >
+          {{ github_runner_work_dir }}/config.sh
+          --url https://github.com/{{ secrets.git.runner_org_id }}
+          --token {{ registration_token.stdout }}
+          --name {{ github_runner_name }}
+          --runnergroup {{ github_runner_group_name }}
+          --labels {{ github_runner_labels }}
+          --work {{ github_runner_work_dir }}/_work
+          --unattended
+          --replace
+      become: true
+      become_user: "{{ github_runner_user }}"
+      args:
+        chdir: "{{ github_runner_work_dir }}"
+      when: not runner_configured.stat.exists
+      changed_when: true
+
+    - name: Install runner service
+      ansible.builtin.command:
+        cmd: "{{ github_runner_work_dir }}/svc.sh install {{ github_runner_user }}"
+      args:
+        chdir: "{{ github_runner_work_dir }}"
+      when: not runner_configured.stat.exists
+      changed_when: true
+
+    - name: Start and enable runner service
+      ansible.builtin.command:
+        cmd: "{{ github_runner_work_dir }}/svc.sh start"
+      args:
+        chdir: "{{ github_runner_work_dir }}"
+      when: not runner_configured.stat.exists
+      changed_when: true
+
+    - name: Ensure runner service is enabled
+      ansible.builtin.systemd:
+        name: "actions.runner.{{ secrets.git.runner_org_id }}.{{ github_runner_name }}.service"
+        enabled: true
+        state: started

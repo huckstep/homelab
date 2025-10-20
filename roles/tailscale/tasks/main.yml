@@ -1,0 +1,340 @@
+---
+# Step 1: Check if Tailscale is already installed and configured
+- name: Check if Tailscale binary exists
+  ansible.builtin.stat:
+    path: /usr/bin/tailscale
+  register: tailscale_binary
+
+- name: Get Tailscale status if installed
+  ansible.builtin.shell: |
+    tailscale status --json
+  register: tailscale_status_result
+  when: tailscale_binary.stat.exists
+  ignore_errors: true
+  changed_when: false
+  become: true
+
+- name: Parse Tailscale status
+  ansible.builtin.set_fact:
+    tailscale_status: "{{ tailscale_status_result.stdout | from_json if tailscale_status_result.rc == 0 else {} }}"
+    tailscale_is_connected: "{{ tailscale_status_result.rc == 0 and (tailscale_status_result.stdout | from_json).BackendState == 'Running' }}"
+  when: tailscale_binary.stat.exists
+
+- name: Set default status for non-installed Tailscale
+  ansible.builtin.set_fact:
+    tailscale_status: {}
+    tailscale_is_connected: false
+  when: not tailscale_binary.stat.exists
+
+- name: Display current Tailscale status
+  ansible.builtin.debug:
+    msg: |
+      Tailscale Status:
+      - Binary installed: {{ tailscale_binary.stat.exists }}
+      - Connected: {{ tailscale_is_connected }}
+      {% if tailscale_is_connected %}
+      - Device name: {{ tailscale_status.Self.DNSName | default('Unknown') }}
+      - Tailscale IP: {{ tailscale_status.Self.TailscaleIPs[0] | default('Unknown') }}
+      {% endif %}
+
+# Step 2: Install/Update Tailscale
+- name: Add Tailscale APT repository
+  become: true
+  block:
+    - name: Ensure keyrings directory exists
+      ansible.builtin.file:
+        path: /usr/share/keyrings
+        state: directory
+        mode: '0755'
+
+    - name: Set repository variables based on OS
+      ansible.builtin.set_fact:
+        tailscale_distro: "{{ 'ubuntu' if ansible_distribution == 'Ubuntu' else 'debian' }}"
+        tailscale_release: "{{ ansible_distribution_release }}"
+
+    - name: Download Tailscale GPG key
+      ansible.builtin.get_url:
+        url: "https://pkgs.tailscale.com/stable/{{ tailscale_distro }}/{{ tailscale_release }}.noarmor.gpg"
+        dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+        mode: '0644'
+
+    - name: Add Tailscale repository
+      ansible.builtin.copy:
+        content: >
+          deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg]
+          https://pkgs.tailscale.com/stable/{{ tailscale_distro }} {{ tailscale_release }} main
+        dest: /etc/apt/sources.list.d/tailscale.list
+        mode: '0644'
+
+    - name: Update apt cache
+      ansible.builtin.apt:
+        update_cache: true
+
+    - name: Install or update Tailscale
+      ansible.builtin.apt:
+        name: tailscale
+        state: present
+
+    - name: Start and enable tailscaled service
+      ansible.builtin.systemd:
+        name: tailscaled
+        state: started
+        enabled: true
+
+# Step 3: Validate Tailscale credentials
+- name: Validate Tailscale OAuth credentials
+  ansible.builtin.include_tasks: validate.yml
+
+- name: Debug Tailscale secrets
+  ansible.builtin.debug:
+    msg: |
+      Tailscale Secrets Debug:
+      - tailnet_id: '{{ secrets.tailscale.tailnet_id | default("UNDEFINED") }}'
+      - client_id: '{{ secrets.tailscale.client_id | default("UNDEFINED") }}'
+      - client_secret: '{% if secrets.tailscale.client_secret is defined and secrets.tailscale.client_secret|length > 0 %}SET{% else %}UNDEFINED{% endif %}'
+    verbosity: 2
+
+# Step 4: OAuth auth key generation
+- name: Get OAuth access token
+  no_log: true
+  ansible.builtin.uri:
+    url: "https://api.tailscale.com/api/v2/oauth/token"
+    method: POST
+    headers:
+      Content-Type: "application/x-www-form-urlencoded"
+    body_format: form-urlencoded
+    body:
+      grant_type: "client_credentials"
+      client_id: "{{ secrets.tailscale.client_id }}"
+      client_secret: "{{ secrets.tailscale.client_secret }}"
+  register: oauth_result
+
+- name: Check if OAuth token was successful
+  ansible.builtin.fail:
+    msg: "OAuth token request failed: {{ oauth_result.json.error if oauth_result.json.error is defined else 'Unknown error' }}"
+  when: oauth_result.status != 200
+
+# Step 5: Check for existing devices in Tailscale org
+- name: Check for existing Tailscale devices with same hostname
+  ansible.builtin.uri:
+    url: "https://api.tailscale.com/api/v2/tailnet/{{ secrets.tailscale.tailnet_id }}/devices"
+    method: GET
+    headers:
+      Authorization: "Bearer {{ oauth_result.json.access_token }}"
+  register: existing_devices_result
+
+- name: Find devices with matching hostname
+  ansible.builtin.set_fact:
+    matching_devices: >-
+      {{
+        existing_devices_result.json.devices | selectattr('hostname', 'equalto', inventory_hostname) | list
+      }}
+
+- name: Display existing device information
+  ansible.builtin.debug:
+    msg: |
+      Found {{ matching_devices | length }} device(s) with hostname '{{ inventory_hostname }}':
+      {% for device in matching_devices %}
+      - Device ID: {{ device.id }}
+      - Name: {{ device.name }}
+      - Hostname: {{ device.hostname }}
+      - Created: {{ device.created }}
+      - Machine Key: {{ device.machineKey[:20] }}...
+      - Addresses: {{ device.addresses | default([]) | join(', ') }}
+      {% endfor %}
+
+- name: Get current machine's Tailscale node key if connected
+  ansible.builtin.shell: |
+    set -o pipefail
+    tailscale status --json | jq -r '.Self.NodeKey // empty'
+  register: current_node_key_result
+  when: tailscale_is_connected
+  changed_when: false
+  become: true
+
+- name: Set current node key
+  ansible.builtin.set_fact:
+    current_node_key: "{{ current_node_key_result.stdout | default('') }}"
+
+- name: Check if current machine matches any existing device
+  ansible.builtin.set_fact:
+    current_device_exists: >-
+      {{
+        matching_devices | selectattr('nodeKey', 'equalto', current_node_key) | list | length > 0
+      }}
+    stale_devices: >-
+      {{
+        matching_devices | rejectattr('nodeKey', 'equalto', current_node_key) | list
+      }}
+  when: current_node_key != ""
+
+- name: Set device status for disconnected machines
+  ansible.builtin.set_fact:
+    current_device_exists: false
+    stale_devices: "{{ matching_devices }}"
+  when: current_node_key == ""
+
+- name: Display device analysis
+  ansible.builtin.debug:
+    msg: |
+      Device Analysis:
+      - Current node key: {{ current_node_key[:20] if current_node_key else 'None (not connected)' }}...
+      - Current device exists in org: {{ current_device_exists }}
+      - Stale devices to remove: {{ stale_devices | length }}
+      {% for device in stale_devices %}
+        - Stale: {{ device.name }} ({{ device.id }}) - Created: {{ device.created }}
+      {% endfor %}
+
+- name: Detect invalid local registration
+  ansible.builtin.set_fact:
+    local_registration_invalid: >-
+      {{
+        tailscale_is_connected and
+        current_node_key != "" and
+        not current_device_exists
+      }}
+
+- name: Display invalid registration detection
+  ansible.builtin.debug:
+    msg: |
+      Invalid Registration Detection:
+      - Local thinks connected: {{ tailscale_is_connected }}
+      - Has node key: {{ current_node_key != "" }}
+      - Device exists in org: {{ current_device_exists }}
+      - Registration invalid: {{ local_registration_invalid }}
+      {% if local_registration_invalid %}
+      Action needed: Re-register device (local registration is stale)
+      {% endif %}
+
+- name: Generate one-time auth key with host-specific tags
+  ansible.builtin.uri:
+    url: "https://api.tailscale.com/api/v2/tailnet/{{ secrets.tailscale.tailnet_id }}/keys"
+    method: POST
+    headers:
+      Authorization: "Bearer {{ oauth_result.json.access_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      capabilities:
+        devices:
+          create:
+            reusable: false
+            ephemeral: false
+            preauthorized: true
+            tags: "{{ tailscale.tags | default(['tag:servers', 'tag:automation']) }}"
+      expirySeconds: 3600
+      description: "Ansible-generated key for {{ inventory_hostname }}"
+  register: auth_key_result
+
+- name: Display generated auth key info
+  ansible.builtin.debug:
+    msg: "Generated auth key: {{ auth_key_result.json.key[:8] }}... (expires in 1 hour)"
+
+# Step 6: Connect Tailscale using generated auth key
+- name: Set Tailscale connection parameters
+  ansible.builtin.set_fact:
+    tailscale_routes: "{{ tailscale.routes | default([]) }}"
+    tailscale_tags: "{{ tailscale.tags | default([]) }}"
+    is_exit_node: "{{ 'tag:exit-node' in (tailscale.tags | default([])) }}"
+    is_connector: "{{ 'tag:connector' in (tailscale.tags | default([])) }}"
+    tailscale_routes_string: "{{ (tailscale.routes | default([])) | join(',') if tailscale.routes is iterable and tailscale.routes is not string else (tailscale.routes | default('')) }}"
+
+- name: Display Tailscale configuration
+  ansible.builtin.debug:
+    msg: |
+      Tailscale Configuration:
+      - Routes to advertise: {{ tailscale_routes_string if tailscale_routes_string else 'None' }}
+      - Tags: {{ tailscale_tags | join(', ') if tailscale_tags else 'Default (tag:servers, tag:automation)' }}
+      - Exit node: {{ is_exit_node }}
+      - Connector: {{ is_connector }}
+
+- name: Connect Tailscale with generated auth key
+  ansible.builtin.shell: |
+    tailscale up \
+    --accept-routes=false \
+    --accept-dns=false \
+    --reset \
+    --auth-key {{ auth_key_result.json.key }}
+  become: true
+  when: not tailscale_is_connected or local_registration_invalid | default(false)
+  changed_when: true
+
+- name: Set Tailscale advertised routes
+  ansible.builtin.shell: |
+    tailscale set --advertise-routes={{ tailscale_routes_string }}
+  become: true
+  when: tailscale_routes_string != ""
+  changed_when: true
+
+- name: Set Tailscale exit node advertisement
+  ansible.builtin.shell: |
+    tailscale set --advertise-exit-node={{ is_exit_node | lower }}
+  become: true
+  changed_when: true
+
+- name: Set Tailscale connector advertisement
+  ansible.builtin.shell: |
+    tailscale set --advertise-connector={{ is_connector | lower }}
+  become: true
+  changed_when: true
+
+- name: Wait for SSH connection to recover after route changes
+  ansible.builtin.wait_for_connection:
+    connect_timeout: 20
+    sleep: 5
+    delay: 5
+    timeout: 300
+  when: tailscale_routes_string != "" or is_exit_node
+
+- name: Wait for configuration to apply
+  ansible.builtin.pause:
+    seconds: 3
+
+- name: Display final Tailscale configuration status
+  ansible.builtin.debug:
+    msg: |
+      Tailscale Configuration Applied:
+      - Routes: {{ tailscale_routes_string if tailscale_routes_string else 'None' }}
+      - Exit node: {{ is_exit_node }}
+      - Connector: {{ is_connector }}
+      - Tags: {{ tailscale_tags | join(', ') if tailscale_tags else 'Default' }}
+      - Status: Configuration complete
+
+- name: Wait for Tailscale connection to establish
+  ansible.builtin.pause:
+    seconds: 5
+  when: not tailscale_is_connected or local_registration_invalid | default(false)
+
+- name: Get updated Tailscale status after connection
+  ansible.builtin.shell: |
+    tailscale status --json
+  register: updated_tailscale_status_result
+  changed_when: false
+  become: true
+  when: not tailscale_is_connected or local_registration_invalid | default(false)
+
+- name: Parse updated Tailscale status
+  ansible.builtin.set_fact:
+    updated_tailscale_status: "{{ updated_tailscale_status_result.stdout | from_json if updated_tailscale_status_result.rc == 0 else {} }}"
+    tailscale_now_connected: "{{ updated_tailscale_status_result.rc == 0 and (updated_tailscale_status_result.stdout | from_json).BackendState == 'Running' }}"
+  when: not tailscale_is_connected or local_registration_invalid | default(false)
+
+- name: Display connection results
+  ansible.builtin.debug:
+    msg: |
+      Tailscale Connection Results:
+      {% if not tailscale_is_connected or local_registration_invalid | default(false) %}
+      {% if local_registration_invalid | default(false) %}
+      - Re-registration successful: {{ tailscale_now_connected | default(false) }} (was invalid)
+      {% else %}
+      - Connection successful: {{ tailscale_now_connected | default(false) }} (new install)
+      {% endif %}
+      {% if tailscale_now_connected | default(false) %}
+      - Device name: {{ updated_tailscale_status.Self.DNSName | default('Unknown') }}
+      - Tailscale IP: {{ updated_tailscale_status.Self.TailscaleIPs[0] | default('Unknown') }}
+      - Machine key: {{ updated_tailscale_status.Self.NodeKey[:20] | default('Unknown') }}...
+      {% endif %}
+      {% else %}
+      - Already connected and valid, skipped connection step
+      {% endif %}
+  when: not tailscale_is_connected or local_registration_invalid | default(false)

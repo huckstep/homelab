@@ -1,0 +1,17 @@
+---
+# K3s installation defaults
+k3s_force_uninstall: false
+k3s_version: "v1.33.4+k3s1"
+k3s_server_args: "--cluster-init --tls-san {{ ansible_default_ipv4.address }} --write-kubeconfig-mode 644"
+
+# External DNS configuration
+external_dns_domain_filter: "{{ secrets.base_domain }}"  # Set to your domain or leave empty to watch all domains
+
+# Let's Encrypt configuration Email for Let's Encrypt notifications
+letsencrypt_email: "{{ secrets.email }}"  # Email for Let's Encrypt notifications
+letsencrypt_staging: true  # Set to true to use staging environment for testing
+
+# Storage configuration
+secondary_storage_path: "/mnt/secondary-storage"
+storage_class_fast: "local-path-nvme"
+storage_class_slow: "local-path-ssd"

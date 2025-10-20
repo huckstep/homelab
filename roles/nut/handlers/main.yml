@@ -1,0 +1,36 @@
+---
+- name: Restart NUT Server
+  become: true
+  ansible.builtin.systemd:
+    name: nut-server
+    state: restarted
+    enabled: true
+  listen: "restart nut"
+
+- name: Stop UPS Driver
+  become: true
+  ansible.builtin.command:
+    cmd: upsdrvctl stop
+  failed_when: false
+  changed_when: true
+  listen: "restart nut"
+
+- name: Start UPS Driver
+  become: true
+  ansible.builtin.command:
+    cmd: upsdrvctl start
+  changed_when: true
+  listen: "restart nut"
+
+- name: Restart NUT Client
+  become: true
+  ansible.builtin.systemd:
+    name: nut-client
+    state: restarted
+    enabled: true
+
+- name: Reload udev
+  become: true
+  ansible.builtin.systemd:
+    name: systemd-udevd
+    state: reloaded
