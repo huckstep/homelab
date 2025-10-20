@@ -33,8 +33,8 @@
           # - devices:tags: required to manage device tags (e.g., for assigning or validating tags on devices)
           scope: "auth_keys devices:core devices:routes devices:tags"
         status_code: [200, 400, 401]
-      register: oauth_token_result
       no_log: true
+      register: oauth_token_result
 
     - name: Fail if OAuth authentication failed
       ansible.builtin.fail:
