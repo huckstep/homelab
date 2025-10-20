@@ -26,6 +26,11 @@
           grant_type: "client_credentials"
           client_id: "{{ secrets.tailscale.client_id }}"
           client_secret: "{{ secrets.tailscale.client_secret }}"
+          # OAuth scopes requested:
+          # - auth_keys: for managing authentication keys
+          # - devices:core: for core device management
+          # - devices:routes: for managing device routes
+          # - devices:tags: required to manage device tags (e.g., for assigning or validating tags on devices)
           scope: "auth_keys devices:core devices:routes devices:tags"
         status_code: [200, 400, 401]
       register: oauth_token_result
