@@ -13,7 +13,7 @@
   hosts: servers
   gather_facts: true
   vars:
-    k3s_force_uninstall: true
+    k3s_force_uninstall: false
   roles:
     - secondary-storage
     - patch

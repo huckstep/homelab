@@ -93,24 +93,75 @@
         state: present
         update_cache: true
 
+    - name: Check for stale NFS mount
+      ansible.builtin.shell: |
+        set -o pipefail
+        mountpoint -q /container_storage/nas && stat /container_storage/nas 2>&1 | grep -q "Stale file handle"
+      register: stale_mount_check
+      failed_when: false
+      changed_when: false
+
+    - name: Force unmount stale NFS mount
+      ansible.builtin.command: umount -f -l /container_storage/nas
+      when: stale_mount_check.rc == 0
+      failed_when: false
+      changed_when: true
+
     - name: Mount NAS NFS share to container storage
       ansible.posix.mount:
         path: /container_storage/nas
         src: "{{ secrets.nas_host }}:{{ secrets.nas_nfs_export }}"
         fstype: nfs
         state: mounted
-        opts: _netdev,nofail,x-systemd.automount,x-systemd.requires=network-online.target
+        opts: _netdev,nofail,x-systemd.automount,x-systemd.requires=network-online.target,soft,timeo=30,retrans=3,rsize=8192,wsize=8192,vers=4.1
         dump: 0
         passno: 0
 
-    - name: Set proper ownership for local-path-provisioner and NFS access
+    - name: Wait for NFS mount to settle
+      ansible.builtin.pause:
+        seconds: 2
+
+    - name: Set proper ownership for container storage base
       ansible.builtin.file:
         path: /container_storage
         state: directory
         owner: root
         group: root
         mode: '0755'
-        recurse: true
+
+    - name: Set proper permissions on local storage paths (not NFS)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0777'
+        recurse: false
+      loop:
+        - /container_storage/fast
+        - /container_storage/slow
+
+    - name: Ensure NAS mount is accessible and set permissions
+      ansible.builtin.file:
+        path: /container_storage/nas
+        state: directory
+        owner: root
+        group: root
+        mode: '0777'
+        recurse: false
+
+    - name: Force correct permissions on NAS mount with chmod
+      ansible.builtin.command: chmod 777 /container_storage/nas
+      changed_when: true
+
+    - name: Verify NAS mount permissions
+      ansible.builtin.stat:
+        path: /container_storage/nas
+      register: nas_perms
+
+    - name: Display NAS mount permissions
+      ansible.builtin.debug:
+        msg: "NAS mount permissions: {{ nas_perms.stat.mode }}"
 
     - name: Remove existing NFS exports for secondary storage
       ansible.builtin.lineinfile:
