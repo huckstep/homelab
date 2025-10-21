@@ -4,6 +4,7 @@
   gather_facts: false
   vars:
     ansible_python_interpreter: "/usr/bin/python3"
+  tasks:
   roles:
     - security
     - pre-reqs
@@ -15,9 +16,9 @@
     k3s_force_uninstall: true
   roles:
     - secondary-storage
-    # - patch
-    # - starship
-    # - nut
-    # - tailscale
-    # - github-runner
+    - patch
+    - starship
+    - nut
+    - tailscale
+    - github-runner
     - k3s-install

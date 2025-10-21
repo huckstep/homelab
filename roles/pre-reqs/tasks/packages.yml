@@ -15,4 +15,5 @@
       - acl
       - util-linux
       - cryptsetup
+      - gpg
     update_cache: true

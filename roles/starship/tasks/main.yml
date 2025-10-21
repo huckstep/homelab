@@ -12,7 +12,7 @@
   become: true
   ansible.builtin.lineinfile:
     line: "eval \"$(starship init bash)\""
-    path: "/home/{{ secrets.interactive_username }}/.bashrc"
+    path: "/home/{{ ansible_user }}/.bashrc"
 - name: Cleanup Installer
   ansible.builtin.file:
     path: /tmp/starship.sh

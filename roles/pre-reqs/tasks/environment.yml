@@ -38,5 +38,10 @@
         line: 'test -z "$VIRTUAL_ENV" && source /venvs/default/bin/activate'
         state: present
       loop:
-        - "{{ secrets.interactive_username }}"
         - "{{ ansible_user }}"
+
+    - name: Add ll alias to interactive user bashrc
+      ansible.builtin.lineinfile:
+        path: "/home/{{ ansible_user }}/.bashrc"
+        line: "alias ll='ls -la'"
+        state: present
