@@ -32,7 +32,7 @@
         virtualenv: /venvs/default
         virtualenv_site_packages: true
 
-    - name: "Add VENV to .bashrc for {{ item }}"
+    - name: Add VENV to .bashrc for users
       ansible.builtin.lineinfile:
         path: "/home/{{ item }}/.bashrc"
         line: 'test -z "$VIRTUAL_ENV" && source /venvs/default/bin/activate'

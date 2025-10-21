@@ -12,6 +12,9 @@ letsencrypt_email: "{{ secrets.email }}"  # Email for Let's Encrypt notification
 letsencrypt_staging: true  # Set to true to use staging environment for testing
 
 # Storage configuration
-secondary_storage_path: "/mnt/secondary-storage"
+# Fast storage uses NVMe drive mounted at /container_storage/fast
+# Slow storage uses system disk at /container_storage/slow
+# NAS storage uses NFS mount at /container_storage/nas
 storage_class_fast: "local-path-nvme"
 storage_class_slow: "local-path-ssd"
+storage_class_nas: "local-path-nas"

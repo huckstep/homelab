@@ -23,10 +23,12 @@ This repository contains Ansible playbooks and roles for automating the setup an
 ### Prerequisites
 
 - **Ansible Engine** installed on your control workstation
+- **Python passlib** installed on your control workstation: `pip install passlib`
 - **Ubuntu LTS** (or compatible Debian-based distribution) on target nodes
 - **Secrets Management** configured (see [Secrets Configuration](#secrets-configuration))
 - **Tailscale Account** (optional, for VPN access)
 - **Cloudflare Account** with API token (for DNS and SSL certificates)
+- **Domain Name** configured in Cloudflare
 - **Domain Name** configured in Cloudflare
 
 ### Basic Setup

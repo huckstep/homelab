@@ -1,5 +1,5 @@
 ---
-- name: Prepare secondary storage
+- name: Prepare container storage
   become: true
   vars:
     nfs_export_options: "rw,sync,no_subtree_check,no_root_squash,anonuid=0,anongid=0"
@@ -10,15 +10,16 @@
         state: present
         update_cache: true
 
-    - name: Create secondary storage mount directory
+    - name: Create container storage base directory
       ansible.builtin.file:
-        path: /mnt/secondary-storage
+        path: /container_storage
         state: directory
         mode: '0755'
 
     - name: Determine partition device name
       ansible.builtin.set_fact:
-        partition_device: "{{ (secondary_device + 'p1') if (secondary_device.startswith('/dev/nvme') or secondary_device.startswith('/dev/mmcblk')) else (secondary_device + '1') }}"
+        partition_device: "{{ (secondary_device + 'p1') if (secondary_device.startswith('/dev/nvme') or
+          secondary_device.startswith('/dev/mmcblk')) else (secondary_device + '1') }}"
 
     - name: Check partition filesystem type
       ansible.builtin.command: "blkid -o value -s TYPE {{ partition_device }}"
@@ -50,15 +51,39 @@
         force: true
       when: fs_check.rc != 0 or fs_check.stdout != "ext4"
 
-    - name: Mount secondary drive
+    - name: Create fast storage subdirectory
+      ansible.builtin.file:
+        path: /container_storage/fast
+        state: directory
+        mode: '0755'
+
+    - name: Mount NVMe drive to fast storage
       ansible.posix.mount:
-        path: /mnt/secondary-storage
+        path: /container_storage/fast
         src: "{{ partition_device }}"
         fstype: ext4
         state: mounted
         opts: defaults
         dump: 0
         passno: 2
+
+    - name: Create slow storage subdirectory
+      ansible.builtin.file:
+        path: /container_storage/slow
+        state: directory
+        mode: '0755'
+
+    - name: Check if NAS directory already exists
+      ansible.builtin.stat:
+        path: /container_storage/nas
+      register: nas_dir_stat
+
+    - name: Create NAS storage subdirectory
+      ansible.builtin.file:
+        path: /container_storage/nas
+        state: directory
+        mode: '0755'
+      when: not nas_dir_stat.stat.exists
 
     - name: Install NFS server
       ansible.builtin.apt:
@@ -68,13 +93,24 @@
         state: present
         update_cache: true
 
+    - name: Mount NAS NFS share to container storage
+      ansible.posix.mount:
+        path: /container_storage/nas
+        src: "{{ secrets.nas_host }}:{{ secrets.nas_nfs_export }}"
+        fstype: nfs
+        state: mounted
+        opts: _netdev,nofail,x-systemd.automount,x-systemd.requires=network-online.target
+        dump: 0
+        passno: 0
+
     - name: Set proper ownership for local-path-provisioner and NFS access
       ansible.builtin.file:
-        path: /mnt/secondary-storage
+        path: /container_storage
         state: directory
         owner: root
         group: root
         mode: '0755'
+        recurse: true
 
     - name: Remove existing NFS exports for secondary storage
       ansible.builtin.lineinfile:
@@ -82,15 +118,21 @@
         regexp: '^/mnt/secondary-storage.*'
         state: absent
 
-    - name: Configure Server NFS export
+    - name: Remove existing NFS exports for container storage
       ansible.builtin.lineinfile:
         path: /etc/exports
-        line: "/mnt/secondary-storage {{ secrets.server_network }}({{ nfs_export_options }})"
+        regexp: '^/container_storage.*'
+        state: absent
+
+    - name: Configure Server NFS export for container storage
+      ansible.builtin.lineinfile:
+        path: /etc/exports
+        line: "/container_storage {{ secrets.server_network }}({{ nfs_export_options }})"
         state: present
-    - name: Configure LAN NFS export
+    - name: Configure LAN NFS export for container storage
       ansible.builtin.lineinfile:
         path: /etc/exports
-        line: "/mnt/secondary-storage {{ secrets.lan_network }}({{ nfs_export_options }})"
+        line: "/container_storage {{ secrets.lan_network }}({{ nfs_export_options }})"
         state: present
 
     - name: Export NFS filesystem

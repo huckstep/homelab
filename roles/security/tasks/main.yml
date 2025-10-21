@@ -1,3 +1,10 @@
+- name: Install passlib for password hashing
+  become: true
+  ansible.builtin.apt:
+    name:
+      - python3-passlib
+    update_cache: true
+
 - name: Get Sudo Password
   ansible.builtin.set_fact:
     ansible_become_password: "{{ secrets.temp_password }}"
