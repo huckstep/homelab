@@ -294,15 +294,15 @@
       become: false
       register: traefik_pods
       until: |
-        traefik_pods.resources | default([]) | length > 0 and
-        (traefik_pods.resources[0].status.conditions
+        (traefik_pods.resources | default([]) | length > 0) and
+        ((traefik_pods.resources[0].status.conditions
          | default([])
          | selectattr('type', 'equalto', 'Ready')
          | map(attribute='status')
          | list
          | default([])
          | first
-         | default('')) == 'True'
+         | default('')) == 'True')
       retries: 30
       delay: 10
 
