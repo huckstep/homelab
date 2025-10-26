@@ -1,6 +1,13 @@
+- name: Ensure remote host key is in known_hosts
+  ansible.builtin.known_hosts:
+    path: "{{ lookup('env', 'HOME') + '/.ssh/known_hosts' }}"
+    name: "{{ ansible_host }}"
+    key: "{{ lookup('pipe', 'ssh-keyscan -H ' + ansible_host) }}"
+  delegate_to: localhost
+
 - name: Test if ssh password works
   ansible.builtin.shell:
-    cmd: sshpass -e ssh -o StrictHostKeyChecking=no "{{ ansible_user }}@{{ ansible_host }}" "true"
+    cmd: sshpass -e ssh "{{ ansible_user }}@{{ ansible_host }}" "true"
   environment:
     SSHPASS: "{{ secrets.new_password }}"
   register: ssh_test
