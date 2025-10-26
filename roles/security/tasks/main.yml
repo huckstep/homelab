@@ -1,49 +1,39 @@
-- name: Get Sudo Password
-  ansible.builtin.set_fact:
-    ansible_become_password: "{{ secrets.temp_password }}"
-    ansible_password: "{{ secrets.temp_password }}"
-  no_log: true
+- name: Ensure remote host key is in known_hosts
+  ansible.builtin.known_hosts:
+    path: "{{ lookup('env', 'HOME') + '/.ssh/known_hosts' }}"
+    name: "{{ ansible_host }}"
+    key: "{{ lookup('pipe', 'ssh-keyscan -H ' + ansible_host) }}"
+  delegate_to: localhost
 
-- name: Test Sudo Access
-  become: true
+- name: Test if ssh password works
   ansible.builtin.command:
-    cmd: id -u
-  register: su_test
+    cmd: true
+  register: ssh_test
   ignore_errors: true
-
-- name: Change to New Password if Sudo Test fails
-  ansible.builtin.set_fact:
-    ansible_become_password: "{{ secrets.new_password }}"
   no_log: true
-  when: su_test.failed
+
+- name: Set Login Password Based on SSH Test
+  ansible.builtin.set_fact:
+    ansible_become_password: "{{ secrets.new_password if ssh_test.rc == 0 else secrets.temp_password }}"
+    ansible_password: "{{ secrets.new_password if ssh_test.rc == 0 else secrets.temp_password }}"
+  no_log: true
 
 - name: Test Sudo Access
   become: true
   ansible.builtin.command:
     cmd: id -u
-  when: su_test.failed
 
-- name: Create Ansible User
+- name: Install passlib for password hashing
   become: true
-  ansible.builtin.user:
-    name: "{{ secrets.username }}"
-    home: "{{ ansible_user_home }}"
-    shell: /bin/bash
-    state: present
-    password: "{{ secrets.new_password | password_hash('sha512') }}"
-
-- name: Add Ansible User to Sudoers
-  become: true
-  ansible.builtin.lineinfile:
-    path: "/etc/sudoers.d/{{ secrets.username }}"
-    line: "{{ secrets.username }} ALL=(ALL) NOPASSWD:ALL"
-    state: present
-    create: true
+  ansible.builtin.apt:
+    name:
+      - python3-passlib
+    update_cache: true
 
 - name: Change Interactive User Password
   become: true
   ansible.builtin.user:
-    name: "{{ secrets.interactive_username }}"
+    name: "{{ ansible_user }}"
     password: "{{ secrets.new_password | password_hash('sha512') }}"
 
 - name: Get Sudo Password
@@ -53,8 +43,8 @@
 - name: Add Interactive User to Sudoers
   become: true
   ansible.builtin.lineinfile:
-    path: "/etc/sudoers.d/{{ secrets.interactive_username }}"
-    line: "{{ secrets.interactive_username }} ALL=(ALL) NOPASSWD:ALL"
+    path: "/etc/sudoers.d/{{ ansible_user }}"
+    line: "{{ ansible_user }} ALL=(ALL) NOPASSWD:ALL"
     state: present
     create: true
 

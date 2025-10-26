@@ -6,7 +6,7 @@
     ansible.builtin.set_fact:
       secrets:
         # User account information
-        username: "lookup from your secrets manager of choice"
+        username: ""
         interactive_username: ""
         email: ""
 
@@ -20,7 +20,8 @@
         lan_network: ""
 
         # Base domain for external DNS and certificates
-        base_domain: ""
+        k3s:
+          base_domain: ""
 
         # Git/GitHub configuration
         git:

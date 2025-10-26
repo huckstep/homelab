@@ -168,18 +168,10 @@
 - name: Configure storage provisioners
   become: true
   block:
-    - name: Ensure secondary storage directory exists
-      ansible.builtin.file:
-        path: "{{ secondary_storage_path }}"
-        state: directory
-        mode: '0755'
-        owner: root
-        group: root
-
     - name: Update local-path-provisioner config to include custom paths
       ansible.builtin.shell: |
         set -o pipefail
-        JSON_CONFIG="{\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/var/lib/rancher/k3s/storage\",\"{{ secondary_storage_path }}\",\"/opt/local-path-provisioner\"]}]}"
+        JSON_CONFIG="{\"nodePathMap\":[{\"node\":\"DEFAULT_PATH_FOR_NON_LISTED_NODES\",\"paths\":[\"/var/lib/rancher/k3s/storage\",\"/container_storage/fast\",\"/container_storage/slow\",\"/container_storage/nas\",\"/opt/local-path-provisioner\"]}]}"
         kubectl get configmap local-path-config -n kube-system -o json | \
         jq --arg config "$JSON_CONFIG" '.data."config.json" = $config' | \
         kubectl apply -f -
@@ -217,6 +209,17 @@
 
     - name: Apply slow storage class
       ansible.builtin.command: kubectl apply -f /tmp/slow-storage-class.yaml
+      changed_when: true
+
+    - name: Create NAS storage class
+      ansible.builtin.copy:
+        content: "{{ lookup('template', 'nas-storage-class.yaml.j2') }}"
+        dest: /tmp/nas-storage-class.yaml
+        mode: '0644'
+      changed_when: true
+
+    - name: Apply NAS storage class
+      ansible.builtin.command: kubectl apply -f /tmp/nas-storage-class.yaml
       changed_when: true
 
 - name: Install external-dns
@@ -290,29 +293,16 @@
           - app.kubernetes.io/name=traefik
       become: false
       register: traefik_pods
-
-    - name: Set fact if Traefik pod is ready
-      ansible.builtin.set_fact:
-        traefik_ready: >-
-          {{
-            (traefik_pods.resources | default([]) | length > 0)
-            and (
-              (
-                traefik_pods.resources | default([])
-              )[0].status.conditions
-              | default([])
-              | selectattr('type', 'equalto', 'Ready')
-              | map(attribute='status')
-              | default([])
-              | first
-              | default('')
-            ) == 'True'
-          }}
-
-    - name: Wait for Traefik to be ready (loop)
-      ansible.builtin.debug:
-        msg: "Waiting for Traefik pod to be ready..."
-      until: traefik_ready
+      until: |
+        (traefik_pods.resources | default([]) | length > 0) and
+        ((traefik_pods.resources[0].status.conditions
+         | default([])
+         | selectattr('type', 'equalto', 'Ready')
+         | map(attribute='status')
+         | list
+         | default([])
+         | first
+         | default('')) == 'True')
       retries: 30
       delay: 10
 
@@ -325,3 +315,11 @@
     - name: Apply Traefik dashboard configuration
       ansible.builtin.command: kubectl apply -f /tmp/traefik-dashboard.yaml
       changed_when: true
+
+- name: Install Portainer Agent
+  when: portainer_install | bool
+  block:
+    - name: Apply Portainer Enterprise STS Agent manifest
+      kubernetes.core.k8s:
+        src: https://downloads.portainer.io/{{ portainer_agent_version }}/portainer-agent-k8s-lb.yaml
+        state: present

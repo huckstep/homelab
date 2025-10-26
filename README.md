@@ -7,11 +7,12 @@ This repository contains Ansible playbooks and roles for automating the setup an
 
 ## Features
 
-- **K3s Installation**: Automated lightweight Kubernetes distribution setup
+- **K3s Installation**: Automated lightweight Kubernetes distribution setup (SQLite for single-node, etcd for HA clusters)
 - **Traefik Ingress**: Reverse proxy with automatic SSL certificates via Let's Encrypt
 - **Dual Certificate Resolvers**: Production and staging Let's Encrypt certificates
 - **External DNS**: Automatic DNS record management with Cloudflare
-- **Multi-tier Storage**: NVMe, SSD, and NFS storage classes
+- **Multi-tier Storage**: Three-tier storage with NVMe (fast), SSD (slow), and NFS (nas) storage classes
+- **Container Management**: Portainer Enterprise STS agent for Kubernetes management
 - **Security Hardening**: SSH key management, sudo configuration, and user setup
 - **Monitoring**: UPS monitoring with NUT, system monitoring tools
 - **VPN**: Tailscale integration for secure remote access
@@ -23,12 +24,12 @@ This repository contains Ansible playbooks and roles for automating the setup an
 ### Prerequisites
 
 - **Ansible Engine** installed on your control workstation
+- **Python passlib** installed on your control workstation: `pip install passlib`
 - **Ubuntu LTS** (or compatible Debian-based distribution) on target nodes
 - **Secrets Management** configured (see [Secrets Configuration](#secrets-configuration))
 - **Tailscale Account** (optional, for VPN access)
 - **Cloudflare Account** with API token (for DNS and SSL certificates)
 - **Domain Name** configured in Cloudflare
-
 ### Basic Setup
 
 1. **Clone this repository:**
@@ -122,7 +123,8 @@ secrets:
   lan_network: "192.168.0.0/24"             # LAN network CIDR
 
   # Base domain for external DNS and certificates
-  base_domain: "yourdomain.com"              # Your domain name
+  k3s:
+    base_domain: "yourdomain.com"              # Your domain name
 
   # Git/GitHub configuration
   git:
@@ -166,19 +168,32 @@ Example integrations:
 Initial server setup playbook that:
 - Applies security hardening (SSH, sudo, user setup)
 - Installs required pre-requisite packages
-- Configures secondary storage
+- Configures secondary storage (NFS exports)
 - Installs system patches
 - Installs and configures Starship shell prompt
 - Sets up NUT for UPS monitoring
 - Configures Tailscale VPN for secure remote access
 - Sets up GitHub Actions runner for CI/CD
-- Installs K3s (lightweight Kubernetes)
+- Installs K3s (lightweight Kubernetes) with SQLite datastore
+- Configures three-tier storage (NVMe fast, SSD slow, NFS nas)
+- Sets up External DNS with Cloudflare integration
+- Configures Traefik ingress with Let's Encrypt SSL
+- Installs Portainer Enterprise STS agent for container management
+
+**Configuration Variables:**
+- `k3s_version`: K3s version to install (default: defined in role defaults)
+- `k3s_force_uninstall`: Force uninstall before installing (default: false) - **WARNING: This destroys the cluster and all data!**
+- `k3s_server_args`: Additional K3s server arguments
+  - Single-node (SQLite): `"--tls-san {{ ansible_default_ipv4.address }} --write-kubeconfig-mode 644"`
+  - HA cluster (etcd): `"--cluster-init --tls-san {{ ansible_default_ipv4.address }} --write-kubeconfig-mode 644"`
+  - **Tip**: Add `--cluster-init` to enable embedded etcd for HA clusters or single-node clusters that may scale to HA in the future
+- `portainer_agent_version`: Portainer agent version (default: ee2-35)
 ## Roles
 
 ### Core Roles
 - **`get-secrets`**: Secrets management integration
 - **`pre-reqs`**: System prerequisites and environment setup
-- **`k3s-install`**: K3s installation and configuration
+- **`k3s-install`**: K3s installation and configuration with embedded etcd, storage classes, External DNS, Traefik, and Portainer agent
 - **`security`**: User management and security hardening
 - **`ssh`**: SSH key distribution and configuration
 
@@ -214,11 +229,37 @@ Certificates are automatically renewed and managed by Traefik.
 
 ## Storage
 
+### K3s Datastore
+K3s supports different datastore options depending on your deployment needs:
+
+- **SQLite (default for single-node)**: Lightweight, file-based database suitable for single-node clusters
+  - Used when `k3s_server_args` does **not** include `--cluster-init`
+  - Database location: `/var/lib/rancher/k3s/server/db/state.db`
+  - Best for: Development, testing, simple single-node production setups
+
+- **Embedded etcd (for HA clusters)**: Distributed datastore for high availability
+  - Enabled by adding `--cluster-init` to `k3s_server_args`
+  - Used for multi-node clusters or single-node clusters preparing for HA expansion
+  - Requires ports 2379-2380 to be available
+  - Best for: Production HA clusters, single-node clusters that may scale to HA
+
+**To enable HA clustering**: Add `--cluster-init` to your `k3s_server_args` in the playbook:
+```yaml
+k3s_server_args: "--cluster-init --tls-san {{ ansible_default_ipv4.address }} --write-kubeconfig-mode 644"
+```
+
+**Note**: Switching between datastores requires uninstalling and reinstalling K3s (**this destroys all cluster data and workloads**). Choose your datastore based on your HA requirements before initial installation.
+
 ### Local Storage
 K3s uses `local-path-provisioner` for local storage with multiple storage classes:
 
-- **`local-path-nvme`** (default): High-performance NVMe storage at `/mnt/secondary-storage`
-- **`local-path-ssd`**: SATA SSD storage at `/opt/local-path-provisioner`
+- **`local-path-nvme`** (fast, default): High-performance NVMe storage at `/container_storage/fast`
+- **`local-path-ssd`** (slow): SATA SSD storage at `/container_storage/slow`
+- **`local-path-nas`** (nas): NFS-backed storage at `/container_storage/nas`
+
+All storage classes also include fallback paths:
+- `/var/lib/rancher/k3s/storage` (K3s default)
+- `/opt/local-path-provisioner` (system disk)
 
 ### NFS Storage
 Secondary storage nodes provide NFS exports for backups pulled by the NAS:
@@ -228,8 +269,9 @@ Secondary storage nodes provide NFS exports for backups pulled by the NAS:
 ### Storage Class Selection
 
 Different applications use different storage classes based on performance requirements:
-- **High-performance apps**: Use `local-path-nvme`
-- **Reliable storage**: Use `local-path-ssd`
+- **High-performance apps**: Use `local-path-nvme` (fast)
+- **Standard apps**: Use `local-path-ssd` (slow)
+- **Shared/backup data**: Use `local-path-nas` (nas)
 
 ## Networking
 
@@ -246,6 +288,12 @@ Tailscale provides secure remote access with:
 - Device authorization
 
 ## Monitoring
+
+### Container Management
+Portainer Enterprise STS agent is automatically installed for Kubernetes cluster management:
+- Access via Portainer Server (separate deployment)
+- Agent URL: Available on LoadBalancer service port 9001
+- Provides web UI for managing containers, stacks, and resources
 
 ### UPS Monitoring
 Network UPS Tools (NUT) monitors CyberPower UPS units with:
@@ -264,6 +312,14 @@ Basic system monitoring and logging is configured for all services.
 - Ensure iptables is configured correctly on Debian
 - Check network connectivity
 - Verify firewall settings
+- For etcd issues, check if ports 2379-2380 are available
+
+**K3s Upgrades**
+- To upgrade K3s, update the `k3s_version` variable in your playbook or inventory
+- The K3s install script automatically handles in-place upgrades
+- K3s maintains backward compatibility within the same major version
+- For major version upgrades, consult the [K3s upgrade documentation](https://docs.k3s.io/upgrades) for proper procedures
+- **Never use `k3s_force_uninstall: true` for upgrades** - this will destroy your cluster and all workloads!
 
 **SSL Certificate Issues**
 - Verify Cloudflare API token permissions (Zone:DNS:Edit, Zone:Zone:Read)

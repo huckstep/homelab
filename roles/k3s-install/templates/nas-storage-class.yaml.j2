@@ -1,9 +1,9 @@
 apiVersion: storage.k8s.io/v1
 kind: StorageClass
 metadata:
-  name: "{{ storage_class_slow }}"
+  name: "{{ storage_class_nas }}"
 provisioner: rancher.io/local-path
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 parameters:
-  nodePath: "/container_storage/slow"
+  nodePath: "/container_storage/nas"

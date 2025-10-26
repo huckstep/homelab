@@ -1,5 +1,5 @@
 ---
-- name: Prepare secondary storage
+- name: Prepare container storage
   become: true
   vars:
     nfs_export_options: "rw,sync,no_subtree_check,no_root_squash,anonuid=0,anongid=0"
@@ -10,9 +10,9 @@
         state: present
         update_cache: true
 
-    - name: Create secondary storage mount directory
+    - name: Create container storage base directory
       ansible.builtin.file:
-        path: /mnt/secondary-storage
+        path: /container_storage
         state: directory
         mode: '0755'
 
@@ -50,15 +50,39 @@
         force: true
       when: fs_check.rc != 0 or fs_check.stdout != "ext4"
 
-    - name: Mount secondary drive
+    - name: Create fast storage subdirectory
+      ansible.builtin.file:
+        path: /container_storage/fast
+        state: directory
+        mode: '0755'
+
+    - name: Mount NVMe drive to fast storage
       ansible.posix.mount:
-        path: /mnt/secondary-storage
+        path: /container_storage/fast
         src: "{{ partition_device }}"
         fstype: ext4
         state: mounted
         opts: defaults
         dump: 0
         passno: 2
+
+    - name: Create slow storage subdirectory
+      ansible.builtin.file:
+        path: /container_storage/slow
+        state: directory
+        mode: '0755'
+
+    - name: Check if NAS directory already exists
+      ansible.builtin.stat:
+        path: /container_storage/nas
+      register: nas_dir_stat
+
+    - name: Create NAS storage subdirectory
+      ansible.builtin.file:
+        path: /container_storage/nas
+        state: directory
+        mode: '0755'
+      when: not nas_dir_stat.stat.exists
 
     - name: Install NFS server
       ansible.builtin.apt:
@@ -68,13 +92,104 @@
         state: present
         update_cache: true
 
-    - name: Set proper ownership for local-path-provisioner and NFS access
+    - name: Check if /container_storage/nas is a mountpoint
+      ansible.builtin.command: mountpoint -q /container_storage/nas
+      register: nas_is_mountpoint
+      failed_when: false
+      changed_when: false
+
+    - name: Run stat on /container_storage/nas if it is a mountpoint
+      ansible.builtin.command: stat /container_storage/nas
+      register: nas_stat_output
+      failed_when: false
+      changed_when: false
+      when: nas_is_mountpoint.rc == 0
+
+    - name: Check for stale or inaccessible NFS mount
+      ansible.builtin.set_fact:
+        nas_stale_mount: >-
+          {{
+            (nas_stat_output.rc is defined and nas_stat_output.rc != 0)
+            or (nas_stat_output.stdout is search('Stale file handle'))
+            or (nas_stat_output.stderr is search('Stale file handle'))
+          }}
+      when:
+        - nas_is_mountpoint.rc == 0
+        - nas_stat_output is defined
+
+    - name: Force unmount stale NFS mount
+      ansible.builtin.command: umount -f -l /container_storage/nas
+      when: nas_stale_mount | default(false)
+      failed_when: false
+      changed_when: true
+
+    # NFS Mount Options Explained:
+    # - _netdev: Wait for network to be available before mounting
+    # - nofail: Don't fail boot if mount fails
+    # - x-systemd.automount: Mount on-demand when accessed
+    # - x-systemd.requires=network-online.target: Ensure network is online before mount
+    # - hard: Retry indefinitely if NFS server is unreachable (safer for data integrity, prevents silent data loss)
+    # - intr: Allow interruption of hung operations (prevents processes from becoming completely stuck)
+    # - timeo=30: Timeout of 30 deciseconds (3 seconds) for RPC requests before retry
+    # - retrans=3: Retry failed RPC requests 3 times before increasing timeout (exponential backoff)
+    # - rsize=8192: Read buffer size of 8KB (balances performance vs memory usage for typical NAS workloads)
+    # - wsize=8192: Write buffer size of 8KB (balances performance vs memory usage for typical NAS workloads)
+    # - vers=4.1: Use NFSv4.1 for better performance and security features
+    # Note: Using 'hard' mount ensures data integrity by retrying indefinitely rather than
+    #       returning errors that could lead to silent data loss. Combined with 'intr' to
+    #       allow manual interruption if needed. This is the recommended configuration for
+    #       production workloads where data safety is critical.
+    - name: Mount NAS NFS share to container storage
+      ansible.posix.mount:
+        path: /container_storage/nas
+        src: "{{ secrets.nas_host }}:{{ secrets.nas_nfs_export }}"
+        fstype: nfs
+        state: mounted
+        opts: _netdev,nofail,x-systemd.automount,x-systemd.requires=network-online.target,hard,intr,timeo=30,retrans=3,rsize=8192,wsize=8192,vers=4.1
+        dump: 0
+        passno: 0
+
+    - name: Wait for NFS mount to settle
+      ansible.builtin.pause:
+        seconds: 2
+
+    - name: Set proper ownership for container storage base
       ansible.builtin.file:
-        path: /mnt/secondary-storage
+        path: /container_storage
         state: directory
         owner: root
         group: root
         mode: '0755'
+
+    - name: Set proper permissions on local storage paths (not NFS)
+      ansible.builtin.file:
+        path: "{{ item }}"
+        state: directory
+        owner: root
+        group: root
+        mode: '0777'
+        recurse: false
+      loop:
+        - /container_storage/fast
+        - /container_storage/slow
+
+    - name: Ensure NAS mount is accessible and set permissions
+      ansible.builtin.file:
+        path: /container_storage/nas
+        state: directory
+        owner: root
+        group: root
+        mode: '0777'
+        recurse: false
+
+    - name: Verify NAS mount permissions
+      ansible.builtin.stat:
+        path: /container_storage/nas
+      register: nas_perms
+
+    - name: Display NAS mount permissions
+      ansible.builtin.debug:
+        msg: "NAS mount permissions: {{ nas_perms.stat.mode }}"
 
     - name: Remove existing NFS exports for secondary storage
       ansible.builtin.lineinfile:
@@ -82,15 +197,21 @@
         regexp: '^/mnt/secondary-storage.*'
         state: absent
 
-    - name: Configure Server NFS export
+    - name: Remove existing NFS exports for container storage
       ansible.builtin.lineinfile:
         path: /etc/exports
-        line: "/mnt/secondary-storage {{ secrets.server_network }}({{ nfs_export_options }})"
+        regexp: '^/container_storage.*'
+        state: absent
+
+    - name: Configure Server NFS export for container storage
+      ansible.builtin.lineinfile:
+        path: /etc/exports
+        line: "/container_storage {{ secrets.server_network }}({{ nfs_export_options }})"
         state: present
-    - name: Configure LAN NFS export
+    - name: Configure LAN NFS export for container storage
       ansible.builtin.lineinfile:
         path: /etc/exports
-        line: "/mnt/secondary-storage {{ secrets.lan_network }}({{ nfs_export_options }})"
+        line: "/container_storage {{ secrets.lan_network }}({{ nfs_export_options }})"
         state: present
 
     - name: Export NFS filesystem

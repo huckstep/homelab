@@ -8,4 +8,4 @@ provisioner: rancher.io/local-path
 volumeBindingMode: WaitForFirstConsumer
 reclaimPolicy: Delete
 parameters:
-  nodePath: "{{ secondary_storage_path }}"
+  nodePath: "/container_storage/fast"
