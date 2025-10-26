@@ -6,12 +6,9 @@
   delegate_to: localhost
 
 - name: Test if ssh password works
-  ansible.builtin.shell:
-    cmd: sshpass -e ssh "{{ ansible_user }}@{{ ansible_host }}" "true"
-  environment:
-    SSHPASS: "{{ secrets.new_password }}"
+  ansible.builtin.command:
+    cmd: true
   register: ssh_test
-  delegate_to: localhost
   ignore_errors: true
   no_log: true
 
