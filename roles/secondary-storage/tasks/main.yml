@@ -150,10 +150,6 @@
         mode: '0777'
         recurse: false
 
-    - name: Force correct permissions on NAS mount with chmod
-      ansible.builtin.command: chmod 777 /container_storage/nas
-      changed_when: true
-
     - name: Verify NAS mount permissions
       ansible.builtin.stat:
         path: /container_storage/nas
