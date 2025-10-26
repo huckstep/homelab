@@ -20,7 +20,8 @@
         lan_network: ""
 
         # Base domain for external DNS and certificates
-        k3s.base_domain: ""
+        k3s:
+          base_domain: ""
 
         # Git/GitHub configuration
         git:
