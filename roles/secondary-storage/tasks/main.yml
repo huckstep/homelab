@@ -108,7 +108,7 @@
     - name: Check for "Stale file handle" in stat output
       ansible.builtin.set_fact:
         nas_stale_mount: "{{ (nas_stat_output.stdout is search('Stale file handle')) or (nas_stat_output.stderr is search('Stale file handle')) }}"
-      when: 
+      when:
         - nas_is_mountpoint.rc == 0
         - nas_stat_output is defined
 
