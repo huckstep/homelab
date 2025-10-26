@@ -315,3 +315,10 @@
     - name: Apply Traefik dashboard configuration
       ansible.builtin.command: kubectl apply -f /tmp/traefik-dashboard.yaml
       changed_when: true
+
+- name: Install Portainer Agent
+  block:
+    - name: Apply Portainer Enterprise STS Agent manifest
+      kubernetes.core.k8s:
+        src: https://downloads.portainer.io/{{ portainer_agent_version }}/portainer-agent-k8s-lb.yaml
+        state: present
