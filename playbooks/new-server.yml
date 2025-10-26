@@ -1,13 +1,13 @@
 ---
-# - name: Security Setup
-#   hosts: servers
-#   gather_facts: false
-#   vars:
-#     ansible_python_interpreter: "/usr/bin/python3"
-#   tasks:
-#   roles:
-#     - security
-#     - pre-reqs
+- name: Security Setup
+  hosts: servers
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "/usr/bin/python3"
+  tasks:
+  roles:
+    - security
+    - pre-reqs
 
 - name: Basic Setup
   hosts: servers
@@ -16,12 +16,13 @@
     k3s_version: "v1.34.1+k3s1"
     k3s_force_uninstall: false
     k3s_server_args: "--tls-san {{ ansible_default_ipv4.address }} --write-kubeconfig-mode 644"
+    portainer_install: true
     portainer_agent_version: "ee2-35"
   roles:
-    # - secondary-storage
-    # - patch
-    # - starship
-    # - nut
-    # - tailscale
-    # - github-runner
+    - secondary-storage
+    - patch
+    - starship
+    - nut
+    - tailscale
+    - github-runner
     - k3s-install

@@ -317,6 +317,7 @@
       changed_when: true
 
 - name: Install Portainer Agent
+  when: portainer_install | bool
   block:
     - name: Apply Portainer Enterprise STS Agent manifest
       kubernetes.core.k8s:

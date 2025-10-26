@@ -18,3 +18,7 @@ letsencrypt_staging: true  # Set to true to use staging environment for testing
 storage_class_fast: "local-path-nvme"
 storage_class_slow: "local-path-ssd"
 storage_class_nas: "local-path-nas"
+
+# Portainer configuration
+portainer_install: false  # Set to true to install Portainer Enterprise STS Agent
+portainer_agent_version: "ee2-35"  # Portainer agent version
