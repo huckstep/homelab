@@ -92,17 +92,27 @@
         state: present
         update_cache: true
 
-    - name: Check for stale NFS mount
-      ansible.builtin.shell: |
-        set -o pipefail
-        mountpoint -q /container_storage/nas && stat /container_storage/nas 2>&1 | grep -q "Stale file handle"
-      register: stale_mount_check
+    - name: Check if /container_storage/nas is a mountpoint
+      ansible.builtin.command: mountpoint -q /container_storage/nas
+      register: nas_is_mountpoint
       failed_when: false
       changed_when: false
 
+    - name: Run stat on /container_storage/nas if it is a mountpoint
+      ansible.builtin.command: stat /container_storage/nas
+      register: nas_stat_output
+      failed_when: false
+      changed_when: false
+      when: nas_is_mountpoint.rc == 0
+
+    - name: Check for "Stale file handle" in stat output
+      ansible.builtin.set_fact:
+        nas_stale_mount: "{{ (nas_stat_output.stdout is search('Stale file handle')) or (nas_stat_output.stderr is search('Stale file handle')) }}"
+      when: nas_is_mountpoint.rc == 0
+
     - name: Force unmount stale NFS mount
       ansible.builtin.command: umount -f -l /container_storage/nas
-      when: stale_mount_check.rc == 0
+      when: nas_stale_mount | default(false)
       failed_when: false
       changed_when: true
 
