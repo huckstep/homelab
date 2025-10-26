@@ -9,6 +9,7 @@
     - security
     - pre-reqs
 
+
 - name: Basic Setup
   hosts: servers
   gather_facts: true
