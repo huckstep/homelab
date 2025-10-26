@@ -123,7 +123,8 @@ secrets:
   lan_network: "192.168.0.0/24"             # LAN network CIDR
 
   # Base domain for external DNS and certificates
-  k3s.base_domain: "yourdomain.com"              # Your domain name
+  k3s:
+    base_domain: "yourdomain.com"              # Your domain name
 
   # Git/GitHub configuration
   git:
