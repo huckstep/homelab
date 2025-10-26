@@ -122,7 +122,7 @@
     # - x-systemd.automount: Mount on-demand when accessed
     # - x-systemd.requires=network-online.target: Ensure network is online before mount
     # - soft: Return error if NFS server is unreachable (WARNING: can lead to data loss if server becomes unavailable during write operations)
-    # - timeo=30: Timeout of 3 seconds (in deciseconds) for RPC requests
+    # - timeo=30: Timeout of 30 deciseconds (3 seconds) for RPC requests
     # - retrans=3: Retry failed RPC requests 3 times before returning error
     # - rsize=8192: Read buffer size of 8KB (balances performance vs memory usage for typical NAS workloads)
     # - wsize=8192: Write buffer size of 8KB (balances performance vs memory usage for typical NAS workloads)
