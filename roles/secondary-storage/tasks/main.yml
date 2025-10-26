@@ -116,6 +116,17 @@
       failed_when: false
       changed_when: true
 
+    # NFS Mount Options Explained:
+    # - _netdev: Wait for network to be available before mounting
+    # - nofail: Don't fail boot if mount fails
+    # - x-systemd.automount: Mount on-demand when accessed
+    # - x-systemd.requires=network-online.target: Ensure network is online before mount
+    # - soft: Return error if NFS server is unreachable (WARNING: can lead to data loss if server becomes unavailable during write operations)
+    # - timeo=30: Timeout of 3 seconds (in deciseconds) for RPC requests
+    # - retrans=3: Retry failed RPC requests 3 times before returning error
+    # - rsize=8192: Read buffer size of 8KB (balances performance vs memory usage for typical NAS workloads)
+    # - wsize=8192: Write buffer size of 8KB (balances performance vs memory usage for typical NAS workloads)
+    # - vers=4.1: Use NFSv4.1 for better performance and security features
     - name: Mount NAS NFS share to container storage
       ansible.posix.mount:
         path: /container_storage/nas
