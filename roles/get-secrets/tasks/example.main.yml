@@ -6,7 +6,7 @@
     ansible.builtin.set_fact:
       secrets:
         # User account information
-        username: "lookup from your secrets manager of choice"
+        username: ""
         interactive_username: ""
         email: ""
 
