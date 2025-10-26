@@ -30,8 +30,6 @@ This repository contains Ansible playbooks and roles for automating the setup an
 - **Tailscale Account** (optional, for VPN access)
 - **Cloudflare Account** with API token (for DNS and SSL certificates)
 - **Domain Name** configured in Cloudflare
-- **Domain Name** configured in Cloudflare
-
 ### Basic Setup
 
 1. **Clone this repository:**
