@@ -123,19 +123,24 @@
     # - nofail: Don't fail boot if mount fails
     # - x-systemd.automount: Mount on-demand when accessed
     # - x-systemd.requires=network-online.target: Ensure network is online before mount
-    # - soft: Return error if NFS server is unreachable (WARNING: can lead to data loss if server becomes unavailable during write operations)
-    # - timeo=30: Timeout of 30 deciseconds (3 seconds) for RPC requests
-    # - retrans=3: Retry failed RPC requests 3 times before returning error
+    # - hard: Retry indefinitely if NFS server is unreachable (safer for data integrity, prevents silent data loss)
+    # - intr: Allow interruption of hung operations (prevents processes from becoming completely stuck)
+    # - timeo=30: Timeout of 30 deciseconds (3 seconds) for RPC requests before retry
+    # - retrans=3: Retry failed RPC requests 3 times before increasing timeout (exponential backoff)
     # - rsize=8192: Read buffer size of 8KB (balances performance vs memory usage for typical NAS workloads)
     # - wsize=8192: Write buffer size of 8KB (balances performance vs memory usage for typical NAS workloads)
     # - vers=4.1: Use NFSv4.1 for better performance and security features
+    # Note: Using 'hard' mount ensures data integrity by retrying indefinitely rather than
+    #       returning errors that could lead to silent data loss. Combined with 'intr' to
+    #       allow manual interruption if needed. This is the recommended configuration for
+    #       production workloads where data safety is critical.
     - name: Mount NAS NFS share to container storage
       ansible.posix.mount:
         path: /container_storage/nas
         src: "{{ secrets.nas_host }}:{{ secrets.nas_nfs_export }}"
         fstype: nfs
         state: mounted
-        opts: _netdev,nofail,x-systemd.automount,x-systemd.requires=network-online.target,soft,timeo=30,retrans=3,rsize=8192,wsize=8192,vers=4.1
+        opts: _netdev,nofail,x-systemd.automount,x-systemd.requires=network-online.target,hard,intr,timeo=30,retrans=3,rsize=8192,wsize=8192,vers=4.1
         dump: 0
         passno: 0
 
