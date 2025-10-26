@@ -105,9 +105,14 @@
       changed_when: false
       when: nas_is_mountpoint.rc == 0
 
-    - name: Check for "Stale file handle" in stat output
+    - name: Check for stale or inaccessible NFS mount
       ansible.builtin.set_fact:
-        nas_stale_mount: "{{ (nas_stat_output.stdout is search('Stale file handle')) or (nas_stat_output.stderr is search('Stale file handle')) }}"
+        nas_stale_mount: >-
+          {{
+            (nas_stat_output.rc is defined and nas_stat_output.rc != 0)
+            or (nas_stat_output.stdout is search('Stale file handle'))
+            or (nas_stat_output.stderr is search('Stale file handle'))
+          }}
       when:
         - nas_is_mountpoint.rc == 0
         - nas_stat_output is defined
