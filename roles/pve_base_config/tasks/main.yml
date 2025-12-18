@@ -1,0 +1,9 @@
+- name: Check if LE ACME plugin exists
+  command: pveum acme plugin list | grep -q LETest
+  register: le_acme_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Create LE ACME plugin
+  command: pveum acme plugin add LETest standalone --email "{{ secrets.email }}"
+  when: le_acme_check.rc != 0

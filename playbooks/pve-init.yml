@@ -1,0 +1,24 @@
+---
+- name: Security Setup
+  hosts: pve
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: "/usr/bin/python3"
+    ansible_user: "root"
+  vars_prompt:
+    - name: "ansible_password"
+      prompt: "Enter the password for initial login"
+      private: true
+    - name: "new_user_name"
+      prompt: "Enter the name for the new user"
+    - name: "new_user_password"
+      prompt: "Enter the password for the new user"
+      private: true
+    - name: "github_user"
+      prompt: "Enter the GitHub username to pull SSH keys from"
+      default: ""
+    - name: "new_root_password"
+      prompt: "Enter the new root password"
+      private: true
+  roles:
+    - pve_security

@@ -1,0 +1,14 @@
+---
+- name: Install Prerequisites
+  hosts: pve
+  gather_facts: true
+  vars:
+    ansible_python_interpreter: "/usr/bin/python3"
+  roles:
+    - pve_pre-reqs
+
+- name: Base Configuration
+  hosts: pve
+  gather_facts: true
+  roles:
+    - pve_base_config
