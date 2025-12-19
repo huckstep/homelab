@@ -14,14 +14,14 @@
   timeout: 30
   when: le_acme_account_check.rc != 0
 
-- name: Check if Cloudflare ACME plugin exists
+- name: Check if CloudFlare ACME plugin exists
   become: true
-  ansible.builtin.shell: /usr/bin/pvenode acme plugin list | grep -q Cloudflare
+  ansible.builtin.shell: /usr/bin/pvenode acme plugin list | grep -q CloudFlare
   register: cf_acme_check
   ignore_errors: true
   changed_when: false
 
-- name: Create temporary Cloudflare data file
+- name: Create temporary CloudFlare data file
   become: true
   ansible.builtin.tempfile:
     state: file
@@ -29,7 +29,7 @@
   register: cf_data_tmp
   when: cf_acme_check.rc != 0
 
-- name: Write Cloudflare credentials to temp file
+- name: Write CloudFlare credentials to temp file
   become: true
   ansible.builtin.copy:
     dest: "{{ cf_data_tmp.path }}"
@@ -39,14 +39,32 @@
     mode: '0600'
   when: cf_acme_check.rc != 0
 
-- name: Create Cloudflare ACME plugin
+- name: Create CloudFlare ACME plugin
   become: true
-  ansible.builtin.shell: /usr/bin/pvenode acme plugin add dns Cloudflare --api cf --data {{ cf_data_tmp.path }}
+  ansible.builtin.shell: /usr/bin/pvenode acme plugin add dns CloudFlare --api cf --data {{ cf_data_tmp.path }}
   when: cf_acme_check.rc != 0
 
-- name: Remove temporary Cloudflare data file
+- name: Remove temporary CloudFlare data file
   become: true
   ansible.builtin.file:
     path: "{{ cf_data_tmp.path }}"
     state: absent
   when: cf_acme_check.rc != 0
+
+- name: Set ACME Account
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode config set --acme account=LE
+
+- name: Set ACME Domains
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode config set --acmedomain0 domain={{fqdn}},plugin=CloudFlare
+
+- name: Obtain ACME Certificate
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode acme cert order --force
+
+- name: Restart pveproxy service
+  become: true
+  ansible.builtin.service:
+    name: pveproxy
+    state: restarted
