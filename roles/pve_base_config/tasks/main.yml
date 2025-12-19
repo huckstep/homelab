@@ -68,3 +68,23 @@
   ansible.builtin.service:
     name: pveproxy
     state: restarted
+
+- name: Check if NFS storage exists
+  become: true
+  ansible.builtin.shell: /usr/sbin/pvesm status | grep -q "{{ item.storage_id }}"
+  register: nfs_storage_check
+  ignore_errors: true
+  changed_when: false
+  loop:
+    - { storage_id: "nfs_fast", server: "{{ secrets.proxmox.nfs_server }}", export: "{{ secrets.proxmox.nfs_fast_export }}", content: "images,rootdir" }
+    - { storage_id: "nfs_slow", server: "{{ secrets.proxmox.nfs_server }}", export: "{{ secrets.proxmox.nfs_slow_export }}", content: "vztmpl,iso,backup,snippets" }
+
+- name: Add NFS storage
+  become: true
+  ansible.builtin.shell: |
+    /usr/sbin/pvesm add nfs {{ item.item.storage_id }} \
+      --server {{ item.item.server }} \
+      --export {{ item.item.export }} \
+      --content {{ item.item.content }}
+  when: item.rc != 0
+  loop: "{{ nfs_storage_check.results }}"
