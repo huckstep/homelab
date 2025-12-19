@@ -1,9 +1,52 @@
-- name: Check if LE ACME plugin exists
-  command: pveum acme plugin list | grep -q LETest
-  register: le_acme_check
+- name: Check if LE ACME account exists
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode acme account list | grep -q LE
+  register: le_acme_account_check
   ignore_errors: true
   changed_when: false
 
-- name: Create LE ACME plugin
-  command: pveum acme plugin add LETest standalone --email "{{ secrets.email }}"
-  when: le_acme_check.rc != 0
+- name: Register LE ACME account
+  become: true
+  expect:
+    command: /usr/bin/pvenode acme account register LE "{{ secrets.email }}" --directory https://acme-v02.api.letsencrypt.org/directory
+    responses:
+      Do you agree to the above terms\? \[y\|N\]: 'y'
+  timeout: 30
+  when: le_acme_account_check.rc != 0
+
+- name: Check if Cloudflare ACME plugin exists
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode acme plugin list | grep -q Cloudflare
+  register: cf_acme_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Create temporary Cloudflare data file
+  become: true
+  ansible.builtin.tempfile:
+    state: file
+    suffix: _cloudflare.data
+  register: cf_data_tmp
+  when: cf_acme_check.rc != 0
+
+- name: Write Cloudflare credentials to temp file
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ cf_data_tmp.path }}"
+    content: |
+      CF_Account_ID={{ secrets.proxmox.cloudflare_account_id }}
+      CF_Token={{ secrets.proxmox.cloudflare_api_token }}
+    mode: '0600'
+  when: cf_acme_check.rc != 0
+
+- name: Create Cloudflare ACME plugin
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode acme plugin add dns Cloudflare --api cf --data {{ cf_data_tmp.path }}
+  when: cf_acme_check.rc != 0
+
+- name: Remove temporary Cloudflare data file
+  become: true
+  ansible.builtin.file:
+    path: "{{ cf_data_tmp.path }}"
+    state: absent
+  when: cf_acme_check.rc != 0
