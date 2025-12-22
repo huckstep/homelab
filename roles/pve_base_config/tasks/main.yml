@@ -51,6 +51,12 @@
     state: absent
   when: cf_acme_check.rc != 0
 
+- name: Check if ACME certificate exists
+  become: true
+  ansible.builtin.stat:
+    path: /etc/pve/nodes/{{ inventory_hostname }}/pveproxy-ssl.pem
+  register: acme_cert_check
+
 - name: Set ACME Account
   become: true
   ansible.builtin.shell: /usr/bin/pvenode config set --acme account=LE
@@ -58,16 +64,19 @@
 - name: Set ACME Domains
   become: true
   ansible.builtin.shell: /usr/bin/pvenode config set --acmedomain0 domain={{fqdn}},plugin=CloudFlare
+  when: not acme_cert_check.stat.exists
 
 - name: Obtain ACME Certificate
   become: true
-  ansible.builtin.shell: /usr/bin/pvenode acme cert order --force
+  ansible.builtin.shell: /usr/bin/pvenode acme cert order
+  when: not acme_cert_check.stat.exists
 
 - name: Restart pveproxy service
   become: true
   ansible.builtin.service:
     name: pveproxy
     state: restarted
+  when: not acme_cert_check.stat.exists
 
 - name: Check if NFS storage exists
   become: true

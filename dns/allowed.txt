@@ -1,0 +1,2 @@
+dns.nextdns.io
+family.cloudflare-dns.com

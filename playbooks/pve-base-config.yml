@@ -1,14 +1,18 @@
 ---
-- name: Install Prerequisites
-  hosts: pve
-  gather_facts: true
-  vars:
-    ansible_python_interpreter: "/usr/bin/python3"
-  roles:
-    - pve_pre-reqs
+# - name: Install Prerequisites
+#   hosts: pve
+#   gather_facts: true
+#   vars:
+#     ansible_python_interpreter: "/usr/bin/python3"
+#   roles:
+#     - pve_pre-reqs
 
 - name: Base Configuration
   hosts: pve
   gather_facts: true
+  vars:
+    tailscale_client_id: "{{secrets.tailscale.pve_client_id}}"
+    tailscale_client_secret: "{{secrets.tailscale.pve_client_secret}}"
   roles:
-    - pve_base_config
+    # - pve_base_config
+    - tailscale

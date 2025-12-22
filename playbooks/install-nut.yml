@@ -1,0 +1,6 @@
+---
+- name: Install NUT
+  hosts: pve1
+  gather_facts: true
+  roles:
+    - nut

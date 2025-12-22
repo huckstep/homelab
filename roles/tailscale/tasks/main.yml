@@ -90,8 +90,8 @@
     msg: |
       Tailscale Secrets Debug:
       - tailnet_id: '{{ secrets.tailscale.tailnet_id | default("UNDEFINED") }}'
-      - client_id: '{{ secrets.tailscale.client_id | default("UNDEFINED") }}'
-      - client_secret: '{% if secrets.tailscale.client_secret is defined and secrets.tailscale.client_secret|length > 0 %}SET{% else %}UNDEFINED{% endif %}'
+      - client_id: '{{ tailscale_client_id | default("UNDEFINED") }}'
+      - client_secret: '{% if tailscale_client_secret is defined and tailscale_client_secret|length > 0 %}SET{% else %}UNDEFINED{% endif %}'
     verbosity: 2
 
 # Step 4: OAuth auth key generation
@@ -105,8 +105,8 @@
     body_format: form-urlencoded
     body:
       grant_type: "client_credentials"
-      client_id: "{{ secrets.tailscale.client_id }}"
-      client_secret: "{{ secrets.tailscale.client_secret }}"
+      client_id: "{{ tailscale_client_id }}"
+      client_secret: "{{ tailscale_client_secret }}"
   register: oauth_result
 
 - name: Check if OAuth token was successful
@@ -225,6 +225,7 @@
       expirySeconds: 3600
       description: "Ansible-generated key for {{ inventory_hostname }}"
   register: auth_key_result
+  run_once: false
 
 - name: Display generated auth key info
   ansible.builtin.debug:
@@ -235,6 +236,7 @@
   ansible.builtin.set_fact:
     tailscale_routes: "{{ tailscale.routes | default([]) }}"
     tailscale_tags: "{{ tailscale.tags | default([]) }}"
+    tailscale_ip: "{{ tailscale.ip | default('') }}"
     is_exit_node: "{{ 'tag:exit-node' in (tailscale.tags | default([])) }}"
     is_connector: "{{ 'tag:connector' in (tailscale.tags | default([])) }}"
     tailscale_routes_string: "{{ (tailscale.routes | default([])) | join(',') if tailscale.routes is iterable and tailscale.routes is not string else (tailscale.routes | default('')) }}"
@@ -245,6 +247,7 @@
       Tailscale Configuration:
       - Routes to advertise: {{ tailscale_routes_string if tailscale_routes_string else 'None' }}
       - Tags: {{ tailscale_tags | join(', ') if tailscale_tags else 'Default (tag:servers, tag:automation)' }}
+      - Specific IP: {{ tailscale_ip if tailscale_ip else 'None (auto-assign)' }}
       - Exit node: {{ is_exit_node }}
       - Connector: {{ is_connector }}
 
@@ -326,6 +329,34 @@
   ansible.builtin.pause:
     seconds: 5
   when: not tailscale_is_connected or local_registration_invalid | default(false)
+
+- name: Get device ID for IP assignment
+  ansible.builtin.shell: |
+    set -o pipefail
+    tailscale status --json | jq -r '.Self.ID // empty'
+  register: device_id_result
+  when: tailscale_ip != "" and (not tailscale_is_connected or local_registration_invalid | default(false))
+  changed_when: false
+  become: true
+
+- name: Set specific Tailscale IP address via API
+  ansible.builtin.uri:
+    url: "https://api.tailscale.com/api/v2/device/{{ device_id_result.stdout }}"
+    method: PATCH
+    headers:
+      Authorization: "Bearer {{ oauth_result.json.access_token }}"
+      Content-Type: "application/json"
+    body_format: json
+    body:
+      ipv4: "{{ tailscale_ip }}"
+    status_code: [200, 204]
+  when: tailscale_ip != "" and device_id_result.stdout is defined and device_id_result.stdout != ""
+  register: ip_assignment_result
+
+- name: Display IP assignment result
+  ansible.builtin.debug:
+    msg: "Assigned specific Tailscale IP: {{ tailscale_ip }}"
+  when: tailscale_ip != "" and ip_assignment_result is succeeded
 
 - name: Get updated Tailscale status after connection
   ansible.builtin.shell: |
