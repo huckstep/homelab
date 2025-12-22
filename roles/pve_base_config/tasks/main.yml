@@ -1,0 +1,99 @@
+- name: Check if LE ACME account exists
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode acme account list | grep -q LE
+  register: le_acme_account_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Register LE ACME account
+  become: true
+  expect:
+    command: /usr/bin/pvenode acme account register LE "{{ secrets.email }}" --directory https://acme-v02.api.letsencrypt.org/directory
+    responses:
+      Do you agree to the above terms\? \[y\|N\]: 'y'
+  timeout: 30
+  when: le_acme_account_check.rc != 0
+
+- name: Check if CloudFlare ACME plugin exists
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode acme plugin list | grep -q CloudFlare
+  register: cf_acme_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Create temporary CloudFlare data file
+  become: true
+  ansible.builtin.tempfile:
+    state: file
+    suffix: _cloudflare.data
+  register: cf_data_tmp
+  when: cf_acme_check.rc != 0
+
+- name: Write CloudFlare credentials to temp file
+  become: true
+  ansible.builtin.copy:
+    dest: "{{ cf_data_tmp.path }}"
+    content: |
+      CF_Account_ID={{ secrets.proxmox.cloudflare_account_id }}
+      CF_Token={{ secrets.proxmox.cloudflare_api_token }}
+    mode: '0600'
+  when: cf_acme_check.rc != 0
+
+- name: Create CloudFlare ACME plugin
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode acme plugin add dns CloudFlare --api cf --data {{ cf_data_tmp.path }}
+  when: cf_acme_check.rc != 0
+
+- name: Remove temporary CloudFlare data file
+  become: true
+  ansible.builtin.file:
+    path: "{{ cf_data_tmp.path }}"
+    state: absent
+  when: cf_acme_check.rc != 0
+
+- name: Check if ACME certificate exists
+  become: true
+  ansible.builtin.stat:
+    path: /etc/pve/nodes/{{ inventory_hostname }}/pveproxy-ssl.pem
+  register: acme_cert_check
+
+- name: Set ACME Account
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode config set --acme account=LE
+
+- name: Set ACME Domains
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode config set --acmedomain0 domain={{fqdn}},plugin=CloudFlare
+  when: not acme_cert_check.stat.exists
+
+- name: Obtain ACME Certificate
+  become: true
+  ansible.builtin.shell: /usr/bin/pvenode acme cert order
+  when: not acme_cert_check.stat.exists
+
+- name: Restart pveproxy service
+  become: true
+  ansible.builtin.service:
+    name: pveproxy
+    state: restarted
+  when: not acme_cert_check.stat.exists
+
+- name: Check if NFS storage exists
+  become: true
+  ansible.builtin.shell: /usr/sbin/pvesm status | grep -q "{{ item.storage_id }}"
+  register: nfs_storage_check
+  ignore_errors: true
+  changed_when: false
+  loop:
+    - { storage_id: "nfs_fast", server: "{{ secrets.proxmox.nfs_server }}", export: "{{ secrets.proxmox.nfs_fast_export }}", content: "images,rootdir" }
+    - { storage_id: "nfs_slow", server: "{{ secrets.proxmox.nfs_server }}", export: "{{ secrets.proxmox.nfs_slow_export }}", content: "vztmpl,iso,backup,snippets" }
+
+- name: Add NFS storage
+  become: true
+  ansible.builtin.shell: |
+    /usr/sbin/pvesm add nfs {{ item.item.storage_id }} \
+      --server {{ item.item.server }} \
+      --export {{ item.item.export }} \
+      --content {{ item.item.content }}
+  when: item.rc != 0
+  loop: "{{ nfs_storage_check.results }}"

@@ -2,13 +2,13 @@
   block:
     - name: Check that OAuth client ID is defined
       ansible.builtin.fail:
-        msg: "Tailscale OAuth client ID is not defined. Please set secrets.tailscale.client_id"
-      when: secrets.tailscale.client_id is not defined or secrets.tailscale.client_id == ""
+        msg: "Tailscale OAuth client ID is not defined. Please set tailscale_client_id"
+      when: tailscale_client_id is not defined or tailscale_client_id == ""
 
     - name: Check that OAuth client secret is defined
       ansible.builtin.fail:
-        msg: "Tailscale OAuth client secret is not defined. Please set secrets.tailscale.client_secret"
-      when: secrets.tailscale.client_secret is not defined or secrets.tailscale.client_secret == ""
+        msg: "Tailscale OAuth client secret is not defined. Please set tailscale_client_secret"
+      when: tailscale_client_secret is not defined or tailscale_client_secret == ""
 
     - name: Check that Tailnet ID is defined
       ansible.builtin.fail:
@@ -24,8 +24,8 @@
         body_format: form-urlencoded
         body:
           grant_type: "client_credentials"
-          client_id: "{{ secrets.tailscale.client_id }}"
-          client_secret: "{{ secrets.tailscale.client_secret }}"
+          client_id: "{{ tailscale_client_id }}"
+          client_secret: "{{ tailscale_client_secret }}"
           # OAuth scopes requested:
           # - auth_keys: for managing authentication keys
           # - devices:core: for core device management

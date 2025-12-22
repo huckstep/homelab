@@ -1,0 +1,126 @@
+- name: Ensure remote host key is in known_hosts
+  ansible.builtin.known_hosts:
+    path: "{{ lookup('env', 'HOME') + '/.ssh/known_hosts' }}"
+    name: "{{ ansible_host }}"
+    key: "{{ lookup('pipe', 'ssh-keyscan -H ' + ansible_host) }}"
+  delegate_to: localhost
+
+- name: Disable Proxmox Enterprise repository
+  ansible.builtin.deb822_repository:
+    name: pve-enterprise
+    types: deb
+    uris: https://enterprise.proxmox.com/debian/pve
+    suites: "{{ ansible_distribution_release }}"
+    components: pve-enterprise
+    enabled: false
+    state: present
+
+- name: Disable Ceph Enterprise repository
+  ansible.builtin.deb822_repository:
+    name: ceph
+    types: deb
+    uris: https://enterprise.proxmox.com/debian/ceph-squid
+    suites: "{{ ansible_distribution_release }}"
+    components: main
+    enabled: false
+    state: present
+
+- name: Enable Proxmox Community repository
+  ansible.builtin.deb822_repository:
+    name: pve-no-subscription
+    types: deb
+    uris: http://download.proxmox.com/debian/pve
+    suites: "{{ ansible_distribution_release }}"
+    components: pve-no-subscription
+    state: present
+
+- name: Update apt cache after repo changes
+  ansible.builtin.apt:
+    update_cache: true
+
+- name: Upgrade all packages
+  ansible.builtin.apt:
+    upgrade: dist
+
+- name: Check if reboot is required
+  ansible.builtin.stat:
+    path: /var/run/reboot-required
+  register: reboot_required
+
+- name: Reboot if required
+  ansible.builtin.reboot:
+  when: reboot_required.stat.exists
+
+- name: Install passlib for password hashing
+  ansible.builtin.apt:
+    name:
+      - python3-passlib
+      - sudo
+    update_cache: true
+
+- name: Create new user
+  ansible.builtin.user:
+    name: "{{ new_user_name }}"
+    password: "{{ new_user_password | password_hash('sha512') }}"
+    state: present
+    shell: /bin/bash
+    groups: sudo
+    append: true
+
+- name: Add new user to sudoers
+  ansible.builtin.lineinfile:
+    path: "/etc/sudoers.d/{{ new_user_name }}"
+    line: "{{ new_user_name }} ALL=(ALL) NOPASSWD:ALL"
+    state: present
+    create: true
+    mode: '0440'
+
+- name: Check if Admins group exists
+  ansible.builtin.shell: pveum group list | grep -q Admins
+  register: admins_group_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Create Proxmox Admins group
+  ansible.builtin.command: pveum group add Admins
+  when: admins_group_check.rc != 0
+
+- name: Check if PAM user exists in Proxmox
+  ansible.builtin.shell: pveum user list | grep -q {{ new_user_name }}@pam
+  register: pam_user_check
+  ignore_errors: true
+  changed_when: false
+
+- name: Add PAM user to Proxmox
+  ansible.builtin.command: pveum user add {{ new_user_name }}@pam
+  when: pam_user_check.rc != 0
+
+- name: Add new user to Proxmox Admins group
+  ansible.builtin.command: pveum user modify {{ new_user_name }}@pam -group Admins
+
+- name: Set new root password
+  ansible.builtin.user:
+    name: root
+    password: "{{ new_root_password | password_hash('sha512') }}"
+
+- name: Configure SSH security
+  when: github_user | length > 0
+  block:
+    - name: Add SSH keys for new user from GitHub
+      ansible.posix.authorized_key:
+        user: "{{ new_user_name }}"
+        key: https://github.com/{{ github_user }}.keys
+
+    - name: Disable SSH password authentication
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PasswordAuthentication'
+        line: 'PasswordAuthentication no'
+      notify: Restart SSH service
+
+    - name: Disable SSH root login
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        regexp: '^#?PermitRootLogin'
+        line: 'PermitRootLogin no'
+      notify: Restart SSH service
