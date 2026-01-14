@@ -1,12 +1,12 @@
 ---
-# - name: Security Setup
-#   hosts: serversup
-#   gather_facts: false
-#   vars:
-#     ansible_python_interpreter: "/usr/bin/python3"
-#   roles:
-#     - security
-#     - pre-reqs
+- name: Security Setup
+  hosts: serversup
+  gather_facts: false
+  vars:
+    ansible_python_interpreter: "/usr/bin/python3"
+  roles:
+    - security
+    - pre-reqs
 
 
 - name: Basic Setup
@@ -16,8 +16,10 @@
     tailscale_client_id: "{{secrets.tailscale.servers_client_id}}"
     tailscale_client_secret: "{{secrets.tailscale.servers_client_secret}}"
   roles:
-    # - patch
-    # - starship
+    - patch
+    - starship
     - nut
-    # - tailscale
+    - tailscale
     - docker
+    - packer
+    - terraform

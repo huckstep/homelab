@@ -1,0 +1,4 @@
+---
+# Terraform version (leave empty for latest)
+# Example (Debian/Ubuntu): "1.7.5-1"
+terraform_version: ""

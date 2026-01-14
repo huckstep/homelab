@@ -1,0 +1,53 @@
+---
+- name: Install prerequisites for HashiCorp APT repo
+  become: true
+  ansible.builtin.apt:
+    name:
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+      - python3-debian
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+
+- name: Create keyrings directory
+  become: true
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: '0755'
+  when: ansible_os_family == 'Debian'
+
+- name: Add HashiCorp APT repository
+  become: true
+  ansible.builtin.deb822_repository:
+    name: hashicorp
+    types:
+      - deb
+    uris:
+      - https://apt.releases.hashicorp.com
+    suites:
+      - "{{ ansible_distribution_release }}"
+    components:
+      - main
+    architectures:
+      - "{{ 'amd64' if ansible_architecture == 'x86_64' else ('arm64' if ansible_architecture == 'aarch64' else ansible_architecture) }}"
+    signed_by: https://apt.releases.hashicorp.com/gpg
+    state: present
+  when: ansible_os_family == 'Debian'
+
+- name: Install Terraform
+  become: true
+  ansible.builtin.apt:
+    name:
+      - terraform{{ '=' + terraform_version if terraform_version else '' }}
+    state: present
+    update_cache: true
+  when: ansible_os_family == 'Debian'
+
+- name: Fail if OS is unsupported
+  ansible.builtin.fail:
+    msg: "The terraform role currently supports Debian/Ubuntu only (ansible_os_family=Debian)."
+  when: ansible_os_family != 'Debian'
