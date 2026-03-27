@@ -11,12 +11,14 @@
       private: true
     - name: "new_user_name"
       prompt: "Enter the name for the new user"
+      private: false
     - name: "new_user_password"
       prompt: "Enter the password for the new user"
       private: true
     - name: "github_user"
       prompt: "Enter the GitHub username to pull SSH keys from"
       default: ""
+      private: false
     - name: "new_root_password"
       prompt: "Enter the new root password"
       private: true
