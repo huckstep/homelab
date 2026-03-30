@@ -4,6 +4,7 @@
     name: "{{ ansible_host }}"
     key: "{{ lookup('pipe', 'ssh-keyscan -H ' + ansible_host) }}"
   delegate_to: localhost
+  when: ansible_host not in ['localhost', '127.0.0.1', '::1']
 
 - name: Add Interactive User to Sudoers
   become: true
