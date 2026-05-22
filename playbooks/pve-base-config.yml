@@ -14,5 +14,5 @@
     tailscale_client_id: "{{secrets.tailscale.pve_client_id}}"
     tailscale_client_secret: "{{secrets.tailscale.pve_client_secret}}"
   roles:
-    # - pve_base_config
+    - pve_base_config
     - tailscale
