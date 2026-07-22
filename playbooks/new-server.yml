@@ -15,8 +15,8 @@
   roles:
     - patch
     - starship
-    # - nut
-    # - tailscale
-    # - docker
-    - packer
-    - terraform
+    - nut
+    - tailscale
+    - docker
+    #- packer
+    #- terraform

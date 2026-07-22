@@ -330,33 +330,15 @@
     seconds: 5
   when: not tailscale_is_connected or local_registration_invalid | default(false)
 
-- name: Get device ID for IP assignment
-  ansible.builtin.shell: |
-    set -o pipefail
-    tailscale status --json | jq -r '.Self.ID // empty'
-  register: device_id_result
-  when: tailscale_ip != "" and (not tailscale_is_connected or local_registration_invalid | default(false))
-  changed_when: false
-  become: true
+# Note: Tailscale IP addresses are auto-assigned by Tailscale
+# The tailscale.ip field in inventory is for documentation/reference only
+# Specific IP assignment must be done manually in the Tailscale admin console
+# API does not support setting device IP addresses via PATCH
 
-- name: Set specific Tailscale IP address via API
-  ansible.builtin.uri:
-    url: "https://api.tailscale.com/api/v2/device/{{ device_id_result.stdout }}"
-    method: PATCH
-    headers:
-      Authorization: "Bearer {{ oauth_result.json.access_token }}"
-      Content-Type: "application/json"
-    body_format: json
-    body:
-      ipv4: "{{ tailscale_ip }}"
-    status_code: [200, 204]
-  when: tailscale_ip != "" and device_id_result.stdout is defined and device_id_result.stdout != ""
-  register: ip_assignment_result
-
-- name: Display IP assignment result
+- name: Display expected Tailscale IP (if configured)
   ansible.builtin.debug:
-    msg: "Assigned specific Tailscale IP: {{ tailscale_ip }}"
-  when: tailscale_ip != "" and ip_assignment_result is succeeded
+    msg: "Note: Expected Tailscale IP is {{ tailscale_ip }}. If auto-assigned IP differs, update it manually in Tailscale admin console."
+  when: tailscale_ip != ""
 
 - name: Get updated Tailscale status after connection
   ansible.builtin.shell: |
