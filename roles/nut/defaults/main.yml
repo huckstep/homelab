@@ -1,0 +1,31 @@
+---
+# NUT operating mode: netserver, netclient, or standalone
+nut_mode: netserver
+
+# The UPS device name in ups.conf / MONITOR target.
+nut_ups_name: "{{ ansible_hostname }}"
+
+# Host used by upsmon MONITOR (localhost for server/standalone).
+nut_monitor_host: localhost
+
+# For a single UPS, this should remain 1.
+nut_monitor_power_value: 1
+
+# upsmon role must be primary for the host that owns the USB UPS.
+nut_upsmon_role: primary
+
+# upsmon timing and shutdown behavior.
+nut_minsupplies: 1
+nut_shutdowncmd: /sbin/shutdown -h +0
+nut_pollfreq: 5
+nut_pollfreqalert: 5
+nut_deadtime: 25
+nut_hostsync: 30
+
+# Delay in seconds between entering FSD and executing shutdown command.
+nut_finaldelay: 300
+
+# Optional NUT/UPS low-battery overrides for aggressive UPS defaults.
+# Uncomment in inventory/group_vars if needed.
+# nut_override_battery_runtime_low: 300
+# nut_override_battery_charge_low: 25

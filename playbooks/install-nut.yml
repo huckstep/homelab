@@ -1,6 +1,24 @@
 ---
-- name: Install NUT
+- name: Install NUT UPS Primary
   hosts: pve1
   gather_facts: true
+  vars:
+    nut_mode: netserver
+    nut_ups_name: pve1
+    nut_monitor_host: localhost
+    nut_upsmon_role: primary
+    nut_finaldelay: 600
+  roles:
+    - nut
+
+- name: Install NUT UPS Clients
+  hosts: pve:servers:!pve1
+  gather_facts: true
+  vars:
+    nut_mode: netclient
+    nut_ups_name: pve1
+    nut_monitor_host: pve1
+    nut_upsmon_role: secondary
+    nut_finaldelay: 600
   roles:
     - nut

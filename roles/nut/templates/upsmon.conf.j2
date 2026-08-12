@@ -1,0 +1,33 @@
+# Network UPS Tools - upsmon configuration
+
+RUN_AS_USER nut
+MINSUPPLIES {{ nut_minsupplies | default('1') }}
+SHUTDOWNCMD "{{ nut_shutdowncmd | default('/sbin/shutdown -h +0') }}"
+POLLFREQ {{ nut_pollfreq | default('5') }}
+POLLFREQALERT {{ nut_pollfreqalert | default('5') }}
+DEADTIME {{ nut_deadtime | default('25') }}
+HOSTSYNC {{ nut_hostsync | default('30') }}
+FINALDELAY {{ nut_finaldelay | default('300') }}
+
+# MONITOR <ups>@<host> <powervalue> <username> <password> <primary|secondary>
+MONITOR {{ nut_ups_name | default(ansible_hostname) }}@{{ nut_monitor_host | default('localhost') }} {{ nut_monitor_power_value | default('1') }} {{ secrets.nut.user }} {{ secrets.nut.pass }} {{ nut_upsmon_role | default('primary') }}
+
+NOTIFYMSG ONLINE "UPS %s on line power"
+NOTIFYMSG ONBATT "UPS %s on battery"
+NOTIFYMSG LOWBATT "UPS %s battery is low"
+NOTIFYMSG FSD "UPS %s: forced shutdown in progress"
+
+NOTIFYFLAG ONLINE SYSLOG
+NOTIFYFLAG ONBATT SYSLOG
+NOTIFYFLAG LOWBATT SYSLOG+WALL
+NOTIFYFLAG FSD SYSLOG+WALL
+
+RBWARNTIME 43200
+NOCOMMWARNTIME 300
+
+{% if nut_override_battery_runtime_low is defined %}
+SETVAR {{ nut_ups_name | default(ansible_hostname) }} battery.runtime.low {{ nut_override_battery_runtime_low }}
+{% endif %}
+{% if nut_override_battery_charge_low is defined %}
+SETVAR {{ nut_ups_name | default(ansible_hostname) }} battery.charge.low {{ nut_override_battery_charge_low }}
+{% endif %}

@@ -6,6 +6,7 @@
     state: restarted
     enabled: true
   listen: "restart nut"
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
 - name: Stop UPS Driver
   become: true
@@ -14,6 +15,7 @@
   failed_when: false
   changed_when: true
   listen: "restart nut"
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
 - name: Start UPS Driver
   become: true
@@ -21,6 +23,7 @@
     cmd: upsdrvctl start
   changed_when: true
   listen: "restart nut"
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
 - name: Restart NUT Client
   become: true
@@ -28,6 +31,8 @@
     name: nut-client
     state: restarted
     enabled: true
+  listen: "restart nut"
+  when: nut_mode | default('netserver') != 'none'
 
 - name: Reload udev
   become: true

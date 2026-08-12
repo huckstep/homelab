@@ -10,6 +10,14 @@
   ansible.builtin.systemd:
     name: nut-server
     enabled: true
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
+
+- name: Enable NUT Client Service
+  become: true
+  ansible.builtin.systemd:
+    name: nut-client
+    enabled: true
+  when: nut_mode | default('netserver') != 'none'
 
 - name: Configure NUT Main Configuration
   become: true
@@ -30,6 +38,7 @@
     owner: root
     group: nut
   notify: restart nut
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
 - name: Configure NUT
   become: true
@@ -40,6 +49,7 @@
     owner: root
     group: nut
   notify: restart nut
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
 - name: Configure NUT UPSD Users
   become: true
@@ -50,6 +60,18 @@
     owner: root
     group: nut
   notify: restart nut
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
+
+- name: Configure NUT UPS Monitor
+  become: true
+  ansible.builtin.template:
+    src: upsmon.conf.j2
+    dest: /etc/nut/upsmon.conf
+    mode: '0640'
+    owner: root
+    group: nut
+  notify: restart nut
+  when: nut_mode | default('netserver') != 'none'
 
 - name: Add nut user to dialout group
   become: true
@@ -57,6 +79,7 @@
     name: nut
     groups: dialout
     append: true
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
 - name: Create udev rules for NUT USB access
   become: true
@@ -72,12 +95,14 @@
     owner: root
     group: root
   notify: Reload udev
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
 - name: Trigger udev rules reload
   become: true
   ansible.builtin.shell:
     cmd: udevadm control --reload-rules && udevadm trigger
   changed_when: true
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
 - name: Check USB UPS devices
   become: true
@@ -85,10 +110,12 @@
     cmd: lsusb
   register: lsusb_output
   changed_when: false
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
 - name: Display USB devices
   ansible.builtin.debug:
     var: lsusb_output.stdout_lines
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
 - name: Start UPS Driver
   become: true
@@ -97,3 +124,4 @@
   register: upsdrvctl_result
   failed_when: upsdrvctl_result.rc not in [0, 1]
   changed_when: upsdrvctl_result.rc == 0
+  when: nut_mode | default('netserver') in ['netserver', 'standalone']
