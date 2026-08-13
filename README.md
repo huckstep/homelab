@@ -188,6 +188,23 @@ Initial server setup playbook that:
   - HA cluster (etcd): `"--cluster-init --tls-san {{ ansible_default_ipv4.address }} --write-kubeconfig-mode 644"`
   - **Tip**: Add `--cluster-init` to enable embedded etcd for HA clusters or single-node clusters that may scale to HA in the future
 - `portainer_agent_version`: Portainer agent version (default: ee2-35)
+
+### pve-qdevice.yml
+Configures a Proxmox cluster to use an external Corosync QDevice host:
+- Installs and enables `corosync-qnetd` on the configured qdevice host (default: `util`)
+- Ensures SSH trust between the primary Proxmox node and qdevice host for certificate exchange
+- Runs `pvecm qdevice setup` from the primary Proxmox node when qdevice is not already configured
+- Prints the current qdevice status after configuration
+
+Run it with:
+```bash
+ansible-playbook -i inventories/hosts.yml playbooks/pve-qdevice.yml
+```
+
+You can override the qdevice host at runtime:
+```bash
+ansible-playbook -i inventories/hosts.yml playbooks/pve-qdevice.yml -e qdevice_server_host=my-qdevice-host
+```
 ## Roles
 
 ### Core Roles

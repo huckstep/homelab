@@ -1,0 +1,91 @@
+---
+- name: Configure Proxmox QDevice
+  hosts: pve
+  gather_facts: false
+  vars:
+    qdevice_server_host: "util"
+    qdevice_server_address: "{{ hostvars[qdevice_server_host].ansible_host | default(qdevice_server_host) }}"
+    qdevice_primary_node: "{{ groups['pve'] | first }}"
+
+  tasks:
+    - name: Ensure qdevice host is present in inventory
+      ansible.builtin.assert:
+        that:
+          - qdevice_server_host in hostvars
+        fail_msg: "Host '{{ qdevice_server_host }}' was not found in inventory."
+
+    - name: Configure qdevice from the primary cluster node
+      when: inventory_hostname == qdevice_primary_node
+      block:
+        - name: Install corosync-qnetd on qdevice host
+          become: true
+          delegate_to: "{{ qdevice_server_host }}"
+          ansible.builtin.apt:
+            name: corosync-qnetd
+            state: present
+            update_cache: true
+
+        - name: Ensure corosync-qnetd is enabled and running
+          become: true
+          delegate_to: "{{ qdevice_server_host }}"
+          ansible.builtin.service:
+            name: corosync-qnetd
+            enabled: true
+            state: started
+
+        - name: Ensure primary node root SSH key exists
+          become: true
+          ansible.builtin.user:
+            name: root
+            generate_ssh_key: true
+            ssh_key_file: .ssh/id_ed25519
+            ssh_key_type: ed25519
+
+        - name: Read primary node root SSH public key
+          become: true
+          ansible.builtin.slurp:
+            src: /root/.ssh/id_ed25519.pub
+          register: primary_node_root_pubkey
+
+        - name: Authorize primary node root SSH key on qdevice host
+          become: true
+          delegate_to: "{{ qdevice_server_host }}"
+          ansible.posix.authorized_key:
+            user: root
+            state: present
+            key: "{{ primary_node_root_pubkey.content | b64decode }}"
+
+        - name: Gather qdevice host SSH keys from primary node
+          become: true
+          ansible.builtin.command: "ssh-keyscan -H {{ qdevice_server_address }}"
+          register: qdevice_host_keys
+          changed_when: false
+
+        - name: Trust qdevice host key on primary node
+          become: true
+          ansible.builtin.known_hosts:
+            path: /root/.ssh/known_hosts
+            name: "{{ qdevice_server_address }}"
+            key: "{{ item }}"
+          loop: "{{ qdevice_host_keys.stdout_lines }}"
+
+        - name: Check if qdevice is already configured
+          become: true
+          ansible.builtin.command: pvecm status
+          register: pvecm_status
+          changed_when: false
+
+        - name: Configure cluster qdevice
+          become: true
+          ansible.builtin.command: "pvecm qdevice setup {{ qdevice_server_address }}"
+          when: "'qdevice' not in (pvecm_status.stdout | lower)"
+
+        - name: Show qdevice status
+          become: true
+          ansible.builtin.command: pvecm qdevice status
+          register: qdevice_status
+          changed_when: false
+
+        - name: Print qdevice status
+          ansible.builtin.debug:
+            var: qdevice_status.stdout_lines
