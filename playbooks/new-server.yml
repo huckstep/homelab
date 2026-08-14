@@ -12,6 +12,9 @@
 - name: Basic Setup
   hosts: servers
   gather_facts: true
+  vars:
+    tailscale_client_id: "{{ secrets.tailscale.servers_client_id }}"
+    tailscale_client_secret: "{{ secrets.tailscale.servers_client_secret }}"
   roles:
     - patch
     - starship
