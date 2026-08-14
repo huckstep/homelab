@@ -1,24 +1,13 @@
 ---
-- name: Install NUT UPS Primary
-  hosts: pve1
+- name: Install NUT
+  hosts: pve:servers
   gather_facts: true
   vars:
-    nut_mode: netserver
-    nut_ups_name: pve1
-    nut_monitor_host: localhost
-    nut_upsmon_role: primary
-    nut_finaldelay: 600
+    nut_mode: "{{ nut.mode | default('netserver') }}"
+    nut_ups_name: "{{ nut.ups_name | default(ansible_hostname) }}"
+    nut_monitor_host: "{{ nut.monitor_host | default('localhost') }}"
+    nut_upsmon_role: "{{ nut.upsmon_role | default('primary') }}"
+    nut_finaldelay: "{{ nut.finaldelay | default(300) }}"
   roles:
     - nut
 
-- name: Install NUT UPS Clients
-  hosts: pve:servers:!pve1
-  gather_facts: true
-  vars:
-    nut_mode: netclient
-    nut_ups_name: pve1
-    nut_monitor_host: pve1
-    nut_upsmon_role: secondary
-    nut_finaldelay: 600
-  roles:
-    - nut

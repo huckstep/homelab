@@ -1,18 +1,97 @@
+pve:
+  vars:
+    ansible_user: "ansible"
+    ansible_user_home: "/home/ansible"
+    ansible_python_interpreter: "/venvs/default/bin/python"
+    ansible_shell_executable: /bin/bash
+  hosts:
+    pve1:
+      ansible_host: x.x.x.x
+      ansible_hostname: pve1
+      arch: amd64
+      fqdn: pve1.example.com
+      nut:
+        mode: netclient # netserver, netclient, or standalone
+        ups_name: util # must match the ups_name configured on the netserver
+        monitor_host: util # hostname/IP of the netserver
+        upsmon_role: secondary # primary or secondary
+        finaldelay: 600
+      tailscale:
+        ip: "100.x.x.x"
+        routes:
+          - "192.168.0.0/24"
+        tags:
+          - "tag:automation"
+          - "tag:pve"
+          - "tag:connector"
+          - "tag:exit-node"
+    pve2:
+      ansible_host: x.x.x.x
+      ansible_hostname: pve2
+      arch: amd64
+      fqdn: pve2.example.com
+      nut:
+        mode: netclient
+        ups_name: util
+        monitor_host: util
+        upsmon_role: secondary
+        finaldelay: 600
+      tailscale:
+        ip: "100.x.x.x"
+        routes:
+          - "192.168.0.0/24"
+        tags:
+          - "tag:automation"
+          - "tag:pve"
+          - "tag:connector"
+          - "tag:exit-node"
+
 servers:
+  vars:
+    ansible_user: "ansible"
+    ansible_user_home: "/home/ansible"
+    ansible_python_interpreter: "/venvs/default/bin/python"
+    ansible_shell_executable: /bin/bash
+  hosts:
+    util:
+      ansible_host: x.x.x.x
+      ansible_hostname: util
+      arch: amd64
+      fqdn: util.example.com
+      nut:
+        # mode/ups_name/monitor_host/upsmon_role omitted: this host owns the UPS
+        # and defaults to netserver/primary monitoring itself
+        finaldelay: 600
+      tailscale:
+        ip: "100.x.x.x"
+        routes:
+          - "192.168.0.0/24"
+        tags:
+          - "tag:automation"
+          - "tag:servers"
+          - "tag:connector"
+          - "tag:exit-node"
+
+nas:
   hosts:
     node1:
       ansible_host: x.x.x.x
-      ansible_hostname: node1
-      local_user: user
-      ansible_user: ansible
-      ansible_user_home: "/home/ansible"
-      ansible_python_interpreter: "/venvs/default/bin/python"
-      arch: amd64
+      ansible_hostname: nas
+      ansible_user: user
+      ansible_user_home: "/home/user"
+      ansible_python_interpreter: "/usr/local/bin/python3"
+      cert_path: "/path/to/fullchain.pem"
+      key_path: "/path/to/privkey.pem"
       fqdn: node1.example.com
       tailscale:
-        routes: 192.168.0.0/24
+        ip: "100.x.x.x"
+        routes:
+          - "192.168.0.0/24"
         tags:
           - "tag:automation"
+          - "tag:connector"
+          - "tag:server"
+          - "tag:exit-node"
 
 powerpanel:
   hosts:
