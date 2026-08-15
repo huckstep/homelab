@@ -9,6 +9,7 @@
   become: true
   ansible.builtin.systemd:
     name: nut-server
+    state: started
     enabled: true
   when: nut_mode | default('netserver') in ['netserver', 'standalone']
 
@@ -16,6 +17,7 @@
   become: true
   ansible.builtin.systemd:
     name: nut-client
+    state: started
     enabled: true
   when: nut_mode | default('netserver') != 'none'
 
